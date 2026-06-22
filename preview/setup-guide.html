@@ -1,0 +1,1100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ナースコールシステム セットアップガイド (Windows)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&display=swap');
+        body { font-family: 'Noto Sans JP', sans-serif; }
+        .step-card { transition: all 0.3s ease; }
+        .step-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.12); }
+        .code-block {
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: 12px;
+            padding: 16px 20px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            position: relative;
+            overflow-x: auto;
+        }
+        .code-block .comment { color: #64748b; }
+        .code-block .command { color: #38bdf8; }
+        .code-block .output { color: #4ade80; }
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: #334155;
+            color: #94a3b8;
+            border: none;
+            border-radius: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .copy-btn:hover { background: #475569; color: #e2e8f0; }
+        .copy-btn.copied { background: #166534; color: #4ade80; }
+        .screenshot-frame {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .progress-bar { transition: width 0.5s ease; }
+        .step-number {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 900;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .timeline-line {
+            position: absolute;
+            left: 23px;
+            top: 48px;
+            bottom: -24px;
+            width: 2px;
+            background: linear-gradient(to bottom, #3b82f6, #8b5cf6);
+        }
+        .warning-box {
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-left: 4px solid #f59e0b;
+        }
+        .success-box {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            border-left: 4px solid #10b981;
+        }
+        .danger-box {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border-left: 4px solid #ef4444;
+        }
+        .info-box {
+            background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+            border-left: 4px solid #3b82f6;
+        }
+        .url-card {
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+        .url-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }
+        .checklist-item {
+            transition: all 0.2s;
+        }
+        .checklist-item:hover {
+            background: #f8fafc;
+        }
+        .checklist-item input:checked + span {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .pulse-dot { animation: pulse-dot 2s infinite; }
+        .toc-link {
+            transition: all 0.2s;
+            padding: 6px 12px;
+            border-radius: 8px;
+        }
+        .toc-link:hover {
+            background: #eff6ff;
+            color: #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- ヘッダー -->
+    <header class="bg-gradient-to-r from-blue-600 via-blue-700 to-indigo-800 text-white">
+        <div class="max-w-5xl mx-auto px-4 py-8">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="bg-white/20 rounded-xl p-3">
+                    <i class="fas fa-hospital text-3xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-3xl font-bold">ナースコールシステム</h1>
+                    <p class="text-blue-200 text-sm">Phase1 技術検証版</p>
+                </div>
+            </div>
+            <h2 class="text-xl font-light mt-4">
+                <i class="fab fa-windows mr-2"></i>
+                Windows セットアップ 完全ガイド
+            </h2>
+            <p class="text-blue-200 mt-2 text-sm">Docker初心者でも安心！画像つきで全手順を解説します</p>
+            
+            <div class="flex gap-4 mt-6 flex-wrap">
+                <div class="bg-white/10 rounded-lg px-4 py-2 text-sm">
+                    <i class="fas fa-clock mr-1"></i> 所要時間: 約30〜45分
+                </div>
+                <div class="bg-white/10 rounded-lg px-4 py-2 text-sm">
+                    <i class="fas fa-layer-group mr-1"></i> 全8ステップ
+                </div>
+                <div class="bg-white/10 rounded-lg px-4 py-2 text-sm">
+                    <i class="fas fa-desktop mr-1"></i> Windows 10/11対応
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-5xl mx-auto px-4 py-8">
+
+        <!-- 目次 -->
+        <nav class="bg-white rounded-2xl shadow-sm p-6 mb-10">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-list-ol text-blue-600"></i> 目次（クリックでジャンプ）
+            </h3>
+            <div class="grid md:grid-cols-2 gap-1">
+                <a href="#step1" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">1</span>
+                    Docker Desktopをインストール
+                </a>
+                <a href="#step2" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">2</span>
+                    WSL 2 を有効にする
+                </a>
+                <a href="#step3" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">3</span>
+                    Docker Desktopを起動・確認
+                </a>
+                <a href="#step4" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">4</span>
+                    プロジェクトファイルを展開
+                </a>
+                <a href="#step5" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">5</span>
+                    環境設定ファイルを作成
+                </a>
+                <a href="#step6" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">6</span>
+                    ビルド＆起動！
+                </a>
+                <a href="#step7" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">7</span>
+                    テストデータを投入
+                </a>
+                <a href="#step8" class="toc-link flex items-center gap-2 text-gray-600">
+                    <span class="bg-blue-100 text-blue-700 w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold">8</span>
+                    動作確認＆通話テスト
+                </a>
+            </div>
+        </nav>
+
+        <!-- 前提条件 -->
+        <section class="bg-white rounded-2xl shadow-sm p-6 mb-10">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-clipboard-check text-green-600"></i> 始める前に確認
+            </h3>
+            <div class="grid md:grid-cols-3 gap-4">
+                <div class="border rounded-xl p-4 text-center">
+                    <i class="fab fa-windows text-4xl text-blue-500 mb-2"></i>
+                    <p class="font-bold">Windows 10/11</p>
+                    <p class="text-sm text-gray-500">64bit版、バージョン1903以降</p>
+                </div>
+                <div class="border rounded-xl p-4 text-center">
+                    <i class="fas fa-memory text-4xl text-purple-500 mb-2"></i>
+                    <p class="font-bold">メモリ 8GB以上</p>
+                    <p class="text-sm text-gray-500">推奨: 16GB</p>
+                </div>
+                <div class="border rounded-xl p-4 text-center">
+                    <i class="fas fa-hdd text-4xl text-orange-500 mb-2"></i>
+                    <p class="font-bold">空き容量 10GB以上</p>
+                    <p class="text-sm text-gray-500">Docker + イメージ用</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 1 ===== -->
+        <section id="step1" class="mb-12 relative">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-blue-600 text-white shadow-lg">1</div>
+                <div>
+                    <h2 class="text-2xl font-bold">Docker Desktop をインストール</h2>
+                    <p class="text-gray-500 mt-1">Dockerはコンテナを動かすためのソフトです（無料）</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-blue-600 mr-2">1-1.</span>
+                        Docker公式サイトにアクセス
+                    </h4>
+                    <p class="mb-4">以下のリンクをクリックしてダウンロードページを開きます：</p>
+                    <a href="https://www.docker.com/products/docker-desktop/" target="_blank" 
+                       class="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition">
+                        <i class="fas fa-download"></i>
+                        Docker Desktop ダウンロードページ
+                        <i class="fas fa-external-link-alt text-sm"></i>
+                    </a>
+                    
+                    <div class="mt-4 screenshot-frame">
+                        <img src="https://sspark.genspark.ai/cfimages?u1=iCHDQKckysBzU%2FBF5WRLxBL3Pq0JfspkyyJQ0TisDqDxZvzP8%2Ff0pMqAhxMOrgrUCJ1YbZeOsmlkdlPskkFiKwctvqVORjag9xla1T%2FfRCC6KA%3D%3D&u2=%2B0VaPYVBaclzKOkw&width=2560" 
+                             alt="Docker Desktop download page" class="w-full">
+                    </div>
+                    <p class="text-sm text-gray-500 mt-2"><i class="fas fa-arrow-up"></i> この画面が表示されます。「Download for Windows」をクリック</p>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-blue-600 mr-2">1-2.</span>
+                        インストーラーを実行
+                    </h4>
+                    <ol class="space-y-3">
+                        <li class="flex items-start gap-3">
+                            <span class="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">a</span>
+                            <span>ダウンロードした <code class="bg-gray-100 px-2 py-0.5 rounded text-sm">Docker Desktop Installer.exe</code> をダブルクリック</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">b</span>
+                            <span>「Use WSL 2 instead of Hyper-V」に <strong>チェックが入っていることを確認</strong></span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">c</span>
+                            <span>「OK」をクリックしてインストール開始（3〜5分かかります）</span>
+                        </li>
+                    </ol>
+                    <div class="mt-4 screenshot-frame">
+                        <img src="https://sspark.genspark.ai/cfimages?u1=V66c3TdiCQ5t5Htq%2BpgH5%2B9iKTjA6PLL6QAXPxK1AWiaWmDHVmOtutYT8WKEGFJsneSHxN6zmVliWd2ZCMKEMlDBsYLCSeS4TVcddCerFqb4Q97ACGFdHz2ulQqpc0lp1Ja4LeXS8Bos8V1zQV%2BEaPIgiUGbyI9N9ZNByF5VpTQJSrTLL9l9uGv9JGK3iN2RJ%2B8u00XD5SxV%2BFQXfL79mJcuaoB6Tuv6UhJgEpGF3MNH1Y1kiLuVWntvj4ZBQ1z063cUD3NZohZpW59K6alLbWkuhQ%3D%3D&u2=dWASD96YGbI11r7x&width=2560" 
+                             alt="Docker installer" class="w-full">
+                    </div>
+                    <p class="text-sm text-gray-500 mt-2"><i class="fas fa-arrow-up"></i> インストール画面。WSL 2のチェックが入っていることを確認</p>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-blue-600 mr-2">1-3.</span>
+                        インストール完了 → PCを再起動
+                    </h4>
+                    <div class="warning-box rounded-xl p-4">
+                        <p class="font-bold"><i class="fas fa-exclamation-triangle text-amber-600 mr-2"></i>重要：PCを再起動してください</p>
+                        <p class="text-sm mt-1">インストール完了後、必ずPCを再起動してください。再起動しないとDockerが正しく動作しません。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 2 ===== -->
+        <section id="step2" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-purple-600 text-white shadow-lg">2</div>
+                <div>
+                    <h2 class="text-2xl font-bold">WSL 2 を有効にする</h2>
+                    <p class="text-gray-500 mt-1">DockerがLinuxコンテナを動かすために必要です</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="info-box rounded-xl p-4 mb-4">
+                    <p><i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                    <strong>Windows 11</strong> や最新のWindows 10では、Docker Desktopが自動でWSL 2をセットアップしてくれる場合があります。Step 3 でDockerが正常起動すれば、この手順はスキップしてOKです。</p>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-purple-600 mr-2">2-1.</span>
+                        PowerShellを「管理者として実行」で開く
+                    </h4>
+                    <ol class="space-y-3 mb-4">
+                        <li class="flex items-start gap-3">
+                            <span class="bg-purple-100 text-purple-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">a</span>
+                            <span>スタートボタンを <strong>右クリック</strong></span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-purple-100 text-purple-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">b</span>
+                            <span>「<strong>Windows PowerShell（管理者）</strong>」または「<strong>ターミナル（管理者）</strong>」をクリック</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-purple-100 text-purple-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">c</span>
+                            <span>「このアプリがデバイスに変更を加えることを許可しますか？」→「<strong>はい</strong>」</span>
+                        </li>
+                    </ol>
+                    <div class="screenshot-frame">
+                        <img src="https://sspark.genspark.ai/cfimages?u1=FJJIvahJvot71NOlhxSRktRW9vrMkYQqWpERdXyJiM0p9sWEekeEj29InQoZBX3Jt2rn2mZKqqfU0BZPUg%2FzDaZZVHvBe7mH94uXBCTAlrm%2F9QHztM2gxJbH2sQj%2FSdjDW4l0PkVXPaH3lCmVy2y4FqeQ32iOsBINirDJAvfOg%3D%3D&u2=1rgGK0eCOMOi8Ohj&width=2560" 
+                             alt="PowerShell as admin" class="w-full">
+                    </div>
+                    <p class="text-sm text-gray-500 mt-2"><i class="fas fa-arrow-up"></i> スタートボタン右クリック → 管理者として実行</p>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-purple-600 mr-2">2-2.</span>
+                        WSLインストールコマンドを実行
+                    </h4>
+                    <p class="mb-3">以下のコマンドをコピーして、PowerShellに貼り付けてEnterを押してください：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'wsl --install')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">wsl --install</span>
+                    </div>
+                    <div class="mt-4 warning-box rounded-xl p-4">
+                        <p class="font-bold"><i class="fas fa-redo text-amber-600 mr-2"></i>完了したらもう一度PCを再起動</p>
+                        <p class="text-sm mt-1">WSLのインストール後、再度PCを再起動してください。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 3 ===== -->
+        <section id="step3" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-green-600 text-white shadow-lg">3</div>
+                <div>
+                    <h2 class="text-2xl font-bold">Docker Desktop を起動・確認</h2>
+                    <p class="text-gray-500 mt-1">Dockerが正しく動くか確認します</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-green-600 mr-2">3-1.</span>
+                        Docker Desktop を起動
+                    </h4>
+                    <ol class="space-y-3 mb-4">
+                        <li class="flex items-start gap-3">
+                            <span class="bg-green-100 text-green-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">a</span>
+                            <span>デスクトップの <strong>Docker Desktop</strong> アイコンをダブルクリック</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-green-100 text-green-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">b</span>
+                            <span>画面右下のタスクバーに <strong>クジラアイコン</strong> <i class="fab fa-docker text-blue-500"></i> が表示されるのを待つ</span>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <span class="bg-green-100 text-green-700 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-0.5">c</span>
+                            <span>クジラアイコンのアニメーションが止まったら起動完了（1〜2分かかります）</span>
+                        </li>
+                    </ol>
+                    <div class="screenshot-frame">
+                        <img src="https://sspark.genspark.ai/cfimages?u1=24pBttEucHXT1ukED6GFiO7cY%2BEuMF6hP7YV8umwGADjrK36A7dXy4DEttxLIboHL96hlYoYuCEX29Pp7JpJWZq1dtOQzevswpsY%2FRtKOrHfYqQbqzBqlnJwF%2B%2FUT%2BWkMQRX&u2=YqSsmYOhCcT0CvlM&width=2560" 
+                             alt="Docker Desktop running" class="w-full">
+                    </div>
+                    <p class="text-sm text-gray-500 mt-2"><i class="fas fa-arrow-up"></i> Docker Desktop が起動した状態。左下が「Engine running」になればOK</p>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-green-600 mr-2">3-2.</span>
+                        Dockerの動作確認
+                    </h4>
+                    <p class="mb-3">PowerShell（通常モードでOK）を開いて、以下を実行：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker --version')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker --version</span>
+                    </div>
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>こう表示されればOK！</p>
+                        <code class="text-sm">Docker version 27.x.x, build xxxxxxx</code>
+                    </div>
+                    
+                    <p class="mt-4 mb-3">もう一つ確認：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose version')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker compose version</span>
+                    </div>
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>こう表示されればOK！</p>
+                        <code class="text-sm">Docker Compose version v2.x.x</code>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 4 ===== -->
+        <section id="step4" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-orange-500 text-white shadow-lg">4</div>
+                <div>
+                    <h2 class="text-2xl font-bold">プロジェクトファイルを展開</h2>
+                    <p class="text-gray-500 mt-1">ダウンロードしたファイルをPCに展開します</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-orange-500 mr-2">4-1.</span>
+                        ファイルをダウンロード
+                    </h4>
+                    <p class="mb-4">以下のボタンからプロジェクトファイルをダウンロードしてください：</p>
+                    <a href="https://www.genspark.ai/api/files/s/xpzalz3T" 
+                       class="inline-flex items-center gap-2 bg-orange-500 text-white px-6 py-3 rounded-xl font-bold hover:bg-orange-600 transition">
+                        <i class="fas fa-file-archive"></i>
+                        nursecall-system.tar.gz をダウンロード
+                        <span class="text-orange-200 text-sm">(64KB)</span>
+                    </a>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-orange-500 mr-2">4-2.</span>
+                        PowerShellで展開する
+                    </h4>
+                    <p class="mb-3">PowerShellを開いて、以下のコマンドを <strong>1行ずつ</strong> 実行してください：</p>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1"><i class="fas fa-arrow-right text-orange-500 mr-1"></i> ダウンロードフォルダに移動：</p>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this, 'cd ~\\Downloads')"><i class="far fa-copy mr-1"></i>コピー</button>
+                                <span class="command">cd ~\Downloads</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1"><i class="fas fa-arrow-right text-orange-500 mr-1"></i> 展開先フォルダを作成：</p>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this, 'mkdir nursecall-system')"><i class="far fa-copy mr-1"></i>コピー</button>
+                                <span class="command">mkdir nursecall-system</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1"><i class="fas fa-arrow-right text-orange-500 mr-1"></i> ファイルを展開：</p>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this, 'tar -xzf nursecall-system.tar.gz -C nursecall-system')"><i class="far fa-copy mr-1"></i>コピー</button>
+                                <span class="command">tar -xzf nursecall-system.tar.gz -C nursecall-system</span>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <p class="text-sm text-gray-500 mb-1"><i class="fas fa-arrow-right text-orange-500 mr-1"></i> プロジェクトフォルダに移動：</p>
+                            <div class="code-block">
+                                <button class="copy-btn" onclick="copyCode(this, 'cd nursecall-system')"><i class="far fa-copy mr-1"></i>コピー</button>
+                                <span class="command">cd nursecall-system</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>確認コマンド</p>
+                        <p class="text-sm mt-1"><code>dir docker-compose.yml</code> を実行して、ファイルが表示されればOK！</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 5 ===== -->
+        <section id="step5" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-yellow-500 text-white shadow-lg">5</div>
+                <div>
+                    <h2 class="text-2xl font-bold">環境設定ファイルを作成</h2>
+                    <p class="text-gray-500 mt-1">1コマンドだけ！設定はデフォルトでOK</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-yellow-600 mr-2">5-1.</span>
+                        .envファイルを作成
+                    </h4>
+                    <p class="mb-3">以下のコマンドを実行するだけです：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'copy .env.example .env')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">copy .env.example .env</span>
+                    </div>
+                    
+                    <div class="info-box rounded-xl p-4 mt-4">
+                        <p><i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                        <strong>ファイルの中身を変更する必要はありません。</strong>Phase1（技術検証版）ではデフォルト値のままで全機能が動きます。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 6 ===== -->
+        <section id="step6" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-red-500 text-white shadow-lg">6</div>
+                <div>
+                    <h2 class="text-2xl font-bold">ビルド＆起動！ <span class="text-red-500">（ここがメイン！）</span></h2>
+                    <p class="text-gray-500 mt-1">いよいよシステム全体を起動します</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-red-500 mr-2">6-1.</span>
+                        Docker イメージをビルド（初回のみ）
+                    </h4>
+                    <p class="mb-3">以下のコマンドを実行してください。<strong>初回は5〜15分かかります</strong>（回線速度によります）：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose build')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker compose build</span>
+                    </div>
+                    
+                    <div class="mt-4 bg-gray-900 rounded-xl p-4 text-sm font-mono text-gray-300">
+                        <p class="text-gray-500"># こんな感じでビルドが進みます（待ちます）</p>
+                        <p class="text-green-400">[+] Building 120.5s (25/25) FINISHED</p>
+                        <p class="text-blue-400"> => [nursecall-asterisk] ...</p>
+                        <p class="text-blue-400"> => [nursecall-api] ...</p>
+                        <p class="text-blue-400"> => [nursecall-admin] ...</p>
+                    </div>
+
+                    <div class="warning-box rounded-xl p-4 mt-4">
+                        <p><i class="fas fa-coffee text-amber-600 mr-2"></i>
+                        ビルド中はコーヒーでも飲みながら待ちましょう。エラーが出なければ放置でOKです。</p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6 border-2 border-red-200">
+                    <h4 class="font-bold text-xl mb-3">
+                        <span class="text-red-500 mr-2">6-2.</span>
+                        <i class="fas fa-rocket text-red-500 mr-1"></i>
+                        システム起動！
+                    </h4>
+                    <p class="mb-3 text-lg">以下のコマンドで6つのサービスが一斉に立ち上がります：</p>
+                    <div class="code-block text-lg">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose up -d')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker compose up -d</span>
+                    </div>
+                    
+                    <div class="mt-4 bg-gray-900 rounded-xl p-4 text-sm font-mono text-gray-300">
+                        <p class="text-green-400">[+] Running 7/7</p>
+                        <p class="text-green-300"> &#10004; Network nursecall-system_nursecall-net  <span class="text-gray-500">Created</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-db                 <span class="text-gray-500">Started</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-asterisk           <span class="text-gray-500">Started</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-api                <span class="text-gray-500">Started</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-client-user        <span class="text-gray-500">Started</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-admin              <span class="text-gray-500">Started</span></p>
+                        <p class="text-green-300"> &#10004; Container nursecall-nginx              <span class="text-gray-500">Started</span></p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-red-500 mr-2">6-3.</span>
+                        起動状態を確認（20〜30秒待ってから）
+                    </h4>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose ps')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker compose ps</span>
+                    </div>
+                    
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i> 全て「Up」と表示されればOK！</p>
+                        <div class="mt-2 bg-white/50 rounded-lg p-3 text-sm font-mono overflow-x-auto">
+                            <table class="w-full text-left">
+                                <tr class="border-b"><th class="pr-4">NAME</th><th class="pr-4">STATUS</th><th>PORTS</th></tr>
+                                <tr><td class="pr-4">nursecall-db</td><td class="pr-4 text-green-600">Up (healthy)</td><td>5432</td></tr>
+                                <tr><td class="pr-4">nursecall-asterisk</td><td class="pr-4 text-green-600">Up</td><td>5060, 8088...</td></tr>
+                                <tr><td class="pr-4">nursecall-api</td><td class="pr-4 text-green-600">Up (healthy)</td><td>3001</td></tr>
+                                <tr><td class="pr-4">nursecall-client-user</td><td class="pr-4 text-green-600">Up</td><td>3002</td></tr>
+                                <tr><td class="pr-4">nursecall-admin</td><td class="pr-4 text-green-600">Up</td><td>3000</td></tr>
+                                <tr><td class="pr-4">nursecall-nginx</td><td class="pr-4 text-green-600">Up</td><td>80</td></tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="danger-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-times-circle text-red-500 mr-2"></i>「Restarting」が表示される場合</p>
+                        <p class="text-sm mt-1">20〜30秒待ってからもう一度 <code>docker compose ps</code> を実行してください。PostgreSQLの起動に少し時間がかかるため、他のサービスが一時的に再起動することがあります。</p>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-red-500 mr-2">6-4.</span>
+                        API ヘルスチェック
+                    </h4>
+                    <p class="mb-3">ブラウザで以下のURLを開いてください：</p>
+                    <div class="bg-blue-50 rounded-xl p-4 text-center">
+                        <a href="http://localhost:3001/api/v1/health" target="_blank" class="text-blue-600 text-lg font-bold hover:underline">
+                            http://localhost:3001/api/v1/health
+                        </a>
+                    </div>
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>こんなJSON が表示されればOK！</p>
+                        <pre class="bg-white/50 rounded-lg p-3 mt-2 text-sm font-mono overflow-x-auto">{
+  "status": "ok",
+  "timestamp": "2026-06-22T...",
+  "uptime": 30.5,
+  "database": "connected"
+}</pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 7 ===== -->
+        <section id="step7" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-teal-600 text-white shadow-lg">7</div>
+                <div>
+                    <h2 class="text-2xl font-bold">テストデータを投入</h2>
+                    <p class="text-gray-500 mt-1">利用者・職員のアカウントを登録します</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-teal-600 mr-2">7-1.</span>
+                        シードデータの実行
+                    </h4>
+                    <p class="mb-3">以下のコマンドで、テスト用のユーザーが自動登録されます：</p>
+                    <div class="code-block">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker exec -i nursecall-db psql -U nursecall -d nursecall < server/seeds/seed.sql')"><i class="far fa-copy mr-1"></i>コピー</button>
+                        <span class="command">docker exec -i nursecall-db psql -U nursecall -d nursecall &lt; server/seeds/seed.sql</span>
+                    </div>
+                    
+                    <div class="success-box rounded-xl p-4 mt-4">
+                        <p class="font-bold"><i class="fas fa-check-circle text-green-600 mr-2"></i>成功すると以下が表示されます：</p>
+                        <pre class="bg-white/50 rounded-lg p-3 mt-2 text-sm font-mono">INSERT 0 3
+INSERT 0 3
+INSERT 0 1
+INSERT 0 3
+INSERT 0 3</pre>
+                    </div>
+                </div>
+
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-3">
+                        <span class="text-teal-600 mr-2">7-2.</span>
+                        登録されたユーザー
+                    </h4>
+                    <p class="mb-3">以下のユーザーが登録されます：</p>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-sm border-collapse">
+                            <thead>
+                                <tr class="bg-gray-100">
+                                    <th class="border px-3 py-2 text-left">役割</th>
+                                    <th class="border px-3 py-2 text-left">名前</th>
+                                    <th class="border px-3 py-2 text-left">内線番号</th>
+                                    <th class="border px-3 py-2 text-left">SIPアカウント</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="bg-orange-50">
+                                    <td class="border px-3 py-2"><span class="bg-orange-200 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">入居者</span></td>
+                                    <td class="border px-3 py-2">田中 太郎</td>
+                                    <td class="border px-3 py-2">1001</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">resident_1001</td>
+                                </tr>
+                                <tr class="bg-orange-50">
+                                    <td class="border px-3 py-2"><span class="bg-orange-200 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">入居者</span></td>
+                                    <td class="border px-3 py-2">佐藤 花子</td>
+                                    <td class="border px-3 py-2">1002</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">resident_1002</td>
+                                </tr>
+                                <tr class="bg-orange-50">
+                                    <td class="border px-3 py-2"><span class="bg-orange-200 text-orange-800 px-2 py-0.5 rounded text-xs font-bold">入居者</span></td>
+                                    <td class="border px-3 py-2">鈴木 一郎</td>
+                                    <td class="border px-3 py-2">1003</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">resident_1003</td>
+                                </tr>
+                                <tr class="bg-blue-50">
+                                    <td class="border px-3 py-2"><span class="bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-xs font-bold">職員</span></td>
+                                    <td class="border px-3 py-2">山田 看護師</td>
+                                    <td class="border px-3 py-2">2001</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">staff_2001</td>
+                                </tr>
+                                <tr class="bg-blue-50">
+                                    <td class="border px-3 py-2"><span class="bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-xs font-bold">職員</span></td>
+                                    <td class="border px-3 py-2">高橋 介護士</td>
+                                    <td class="border px-3 py-2">2002</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">staff_2002</td>
+                                </tr>
+                                <tr class="bg-blue-50">
+                                    <td class="border px-3 py-2"><span class="bg-blue-200 text-blue-800 px-2 py-0.5 rounded text-xs font-bold">職員</span></td>
+                                    <td class="border px-3 py-2">伊藤 介護士</td>
+                                    <td class="border px-3 py-2">2003</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">staff_2003</td>
+                                </tr>
+                                <tr class="bg-purple-50">
+                                    <td class="border px-3 py-2"><span class="bg-purple-200 text-purple-800 px-2 py-0.5 rounded text-xs font-bold">管理者</span></td>
+                                    <td class="border px-3 py-2">管理者</td>
+                                    <td class="border px-3 py-2">9001</td>
+                                    <td class="border px-3 py-2 font-mono text-xs">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== STEP 8 ===== -->
+        <section id="step8" class="mb-12">
+            <div class="flex items-start gap-4 mb-6">
+                <div class="step-number bg-indigo-600 text-white shadow-lg">8</div>
+                <div>
+                    <h2 class="text-2xl font-bold">動作確認＆通話テスト</h2>
+                    <p class="text-gray-500 mt-1">全画面を開いて、実際に通話テストをします</p>
+                </div>
+            </div>
+
+            <div class="ml-16 space-y-6">
+                <!-- URL一覧 -->
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6">
+                    <h4 class="font-bold text-lg mb-4">
+                        <span class="text-indigo-600 mr-2">8-1.</span>
+                        各画面をブラウザで開く
+                    </h4>
+                    <div class="grid md:grid-cols-2 gap-4">
+                        <a href="http://localhost:3002" target="_blank" class="url-card block bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="bg-orange-500 text-white w-10 h-10 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-bell text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-orange-800">利用者画面</p>
+                                    <p class="text-xs text-orange-600">呼出ボタン</p>
+                                </div>
+                            </div>
+                            <code class="text-sm text-orange-700 bg-white/50 px-2 py-1 rounded">http://localhost:3002</code>
+                        </a>
+
+                        <a href="http://localhost:3000" target="_blank" class="url-card block bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="bg-blue-500 text-white w-10 h-10 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-chart-bar text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-blue-800">管理者画面</p>
+                                    <p class="text-xs text-blue-600">ダッシュボード</p>
+                                </div>
+                            </div>
+                            <code class="text-sm text-blue-700 bg-white/50 px-2 py-1 rounded">http://localhost:3000</code>
+                        </a>
+
+                        <a href="http://localhost" target="_blank" class="url-card block bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="bg-green-500 text-white w-10 h-10 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-globe text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-green-800">統合URL（Nginx）</p>
+                                    <p class="text-xs text-green-600">全サービス統合</p>
+                                </div>
+                            </div>
+                            <code class="text-sm text-green-700 bg-white/50 px-2 py-1 rounded">http://localhost</code>
+                        </a>
+
+                        <a href="http://localhost:3001/api/v1/health" target="_blank" class="url-card block bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+                            <div class="flex items-center gap-3 mb-2">
+                                <div class="bg-purple-500 text-white w-10 h-10 rounded-lg flex items-center justify-center">
+                                    <i class="fas fa-heartbeat text-xl"></i>
+                                </div>
+                                <div>
+                                    <p class="font-bold text-purple-800">API ヘルスチェック</p>
+                                    <p class="text-xs text-purple-600">サーバー状態確認</p>
+                                </div>
+                            </div>
+                            <code class="text-sm text-purple-700 bg-white/50 px-2 py-1 rounded">http://localhost:3001/api/v1/health</code>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- 通話テスト -->
+                <div class="step-card bg-white rounded-2xl shadow-sm p-6 border-2 border-indigo-200">
+                    <h4 class="font-bold text-lg mb-4">
+                        <span class="text-indigo-600 mr-2">8-2.</span>
+                        <i class="fas fa-phone-alt text-indigo-600 mr-1"></i>
+                        呼出テスト（実際にやってみよう！）
+                    </h4>
+                    
+                    <div class="space-y-6">
+                        <!-- テスト手順 -->
+                        <div class="bg-indigo-50 rounded-xl p-5">
+                            <h5 class="font-bold mb-3"><i class="fas fa-play-circle text-indigo-600 mr-2"></i>テスト手順</h5>
+                            
+                            <div class="space-y-4">
+                                <div class="flex items-start gap-3">
+                                    <div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">1</div>
+                                    <div>
+                                        <p class="font-bold">管理者画面を開いておく</p>
+                                        <p class="text-sm text-gray-600"><a href="http://localhost:3000" target="_blank" class="text-blue-600 underline">http://localhost:3000</a> をブラウザで開いたままにする</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-start gap-3">
+                                    <div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">2</div>
+                                    <div>
+                                        <p class="font-bold">利用者画面を別タブで開く</p>
+                                        <p class="text-sm text-gray-600"><a href="http://localhost:3002" target="_blank" class="text-blue-600 underline">http://localhost:3002</a> を別のタブで開く</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-start gap-3">
+                                    <div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">3</div>
+                                    <div>
+                                        <p class="font-bold">利用者画面の大きな「呼出」ボタンを押す</p>
+                                        <p class="text-sm text-gray-600">または、PowerShellから以下のコマンドでもOK：</p>
+                                        <div class="code-block mt-2">
+                                            <button class="copy-btn" onclick="copyCode(this, 'curl.exe -X POST http://localhost:3001/api/v1/calls/request -H &quot;Content-Type: application/json&quot; -H &quot;X-API-Key: nursecall_api_key_dev&quot; -d &quot;{\\\&quot;caller_id\\\&quot;: 1}&quot;')"><i class="far fa-copy mr-1"></i>コピー</button>
+                                            <span class="command">curl.exe -X POST http://localhost:3001/api/v1/calls/request `<br>  -H "Content-Type: application/json" `<br>  -H "X-API-Key: nursecall_api_key_dev" `<br>  -d '{"caller_id": 1}'</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="flex items-start gap-3">
+                                    <div class="bg-indigo-600 text-white w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0">4</div>
+                                    <div>
+                                        <p class="font-bold">管理者画面で通話が表示される！</p>
+                                        <p class="text-sm text-gray-600">ダッシュボードの「最近の通話」に新しい呼出が表示されます</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="success-box rounded-xl p-4">
+                            <p class="font-bold text-lg"><i class="fas fa-party-horn text-green-600 mr-2"></i><i class="fas fa-check-circle text-green-600 mr-2"></i>おめでとうございます！</p>
+                            <p class="mt-1">ここまでできれば、ナースコールシステムのPhase1（技術検証版）のセットアップは完了です！</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== ポート一覧 ===== -->
+        <section class="bg-white rounded-2xl shadow-sm p-6 mb-10">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-network-wired text-blue-600"></i> システム構成図 & ポート一覧
+            </h3>
+            <div class="bg-gray-900 rounded-xl p-6 text-white font-mono text-sm overflow-x-auto">
+<pre class="leading-relaxed">
+  ブラウザ
+    |
+    v
+  <span class="text-yellow-400">[Nginx :80]</span> ─── リバースプロキシ（全サービスをまとめる）
+    |       |        |           |
+    v       v        v           v
+ <span class="text-orange-400">[利用者   </span><span class="text-blue-400"> [管理者</span>    <span class="text-green-400">[API</span>        <span class="text-purple-400">[Asterisk</span>
+ <span class="text-orange-400"> :3002]</span>    <span class="text-blue-400"> :3000]</span>   <span class="text-green-400"> :3001]</span>      <span class="text-purple-400"> :5060]</span>
+  <span class="text-orange-400">呼出ボタン</span>  <span class="text-blue-400">ダッシュ</span>   <span class="text-green-400">REST API</span>    <span class="text-purple-400">SIP/WebRTC</span>
+              <span class="text-blue-400">ボード</span>    <span class="text-green-400">Socket.IO</span>   <span class="text-purple-400">音声通話</span>
+                          |
+                          v
+                     <span class="text-red-400">[PostgreSQL :5432]</span>
+                      <span class="text-red-400">データベース</span>
+</pre>
+            </div>
+            
+            <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border px-3 py-2 text-left">ポート</th>
+                            <th class="border px-3 py-2 text-left">サービス</th>
+                            <th class="border px-3 py-2 text-left">用途</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td class="border px-3 py-2 font-mono font-bold">80</td><td class="border px-3 py-2">Nginx</td><td class="border px-3 py-2">全サービス統合URL</td></tr>
+                        <tr class="bg-gray-50"><td class="border px-3 py-2 font-mono font-bold">3000</td><td class="border px-3 py-2">React管理画面</td><td class="border px-3 py-2">管理者ダッシュボード</td></tr>
+                        <tr><td class="border px-3 py-2 font-mono font-bold">3001</td><td class="border px-3 py-2">Node.js API</td><td class="border px-3 py-2">REST API + WebSocket</td></tr>
+                        <tr class="bg-gray-50"><td class="border px-3 py-2 font-mono font-bold">3002</td><td class="border px-3 py-2">利用者Web画面</td><td class="border px-3 py-2">呼出ボタンページ</td></tr>
+                        <tr><td class="border px-3 py-2 font-mono font-bold">5060</td><td class="border px-3 py-2">Asterisk</td><td class="border px-3 py-2">SIP通話プロトコル</td></tr>
+                        <tr class="bg-gray-50"><td class="border px-3 py-2 font-mono font-bold">8088</td><td class="border px-3 py-2">Asterisk</td><td class="border px-3 py-2">WebRTC用WebSocket</td></tr>
+                        <tr><td class="border px-3 py-2 font-mono font-bold">5432</td><td class="border px-3 py-2">PostgreSQL</td><td class="border px-3 py-2">データベース</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- ===== 停止・再起動 ===== -->
+        <section class="bg-white rounded-2xl shadow-sm p-6 mb-10">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-power-off text-red-500"></i> 停止・再起動・リセット
+            </h3>
+            <div class="grid md:grid-cols-3 gap-4">
+                <div class="border rounded-xl p-4">
+                    <h4 class="font-bold text-gray-700 mb-2"><i class="fas fa-stop-circle text-red-500 mr-2"></i>停止</h4>
+                    <p class="text-sm text-gray-500 mb-2">データは保持されます</p>
+                    <div class="code-block !p-3">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose down')"><i class="far fa-copy"></i></button>
+                        <span class="command text-sm">docker compose down</span>
+                    </div>
+                </div>
+                <div class="border rounded-xl p-4">
+                    <h4 class="font-bold text-gray-700 mb-2"><i class="fas fa-redo text-blue-500 mr-2"></i>再起動</h4>
+                    <p class="text-sm text-gray-500 mb-2">全サービスを再起動</p>
+                    <div class="code-block !p-3">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose restart')"><i class="far fa-copy"></i></button>
+                        <span class="command text-sm">docker compose restart</span>
+                    </div>
+                </div>
+                <div class="border rounded-xl p-4">
+                    <h4 class="font-bold text-gray-700 mb-2"><i class="fas fa-trash-alt text-gray-500 mr-2"></i>完全リセット</h4>
+                    <p class="text-sm text-gray-500 mb-2">データも全削除</p>
+                    <div class="code-block !p-3">
+                        <button class="copy-btn" onclick="copyCode(this, 'docker compose down -v')"><i class="far fa-copy"></i></button>
+                        <span class="command text-sm">docker compose down -v</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== トラブルシューティング ===== -->
+        <section class="bg-white rounded-2xl shadow-sm p-6 mb-10">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-wrench text-orange-500"></i> よくあるトラブルと解決策
+            </h3>
+            <div class="space-y-4">
+                <details class="border rounded-xl overflow-hidden">
+                    <summary class="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 font-bold">
+                        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                        「port is already allocated」エラー
+                    </summary>
+                    <div class="px-4 py-3">
+                        <p class="mb-2">他のアプリケーションがポートを使用中です。</p>
+                        <p class="font-bold">解決策：</p>
+                        <ol class="list-decimal ml-5 text-sm space-y-1">
+                            <li>使用中のアプリを終了する（例：他のWebサーバー、Skypeなど）</li>
+                            <li>または、PowerShellで競合プロセスを確認：
+                                <code class="bg-gray-100 px-1 rounded">netstat -ano | findstr :3000</code>
+                            </li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details class="border rounded-xl overflow-hidden">
+                    <summary class="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 font-bold">
+                        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                        「Cannot connect to the Docker daemon」エラー
+                    </summary>
+                    <div class="px-4 py-3">
+                        <p class="mb-2">Docker Desktopが起動していません。</p>
+                        <p class="font-bold">解決策：</p>
+                        <p class="text-sm">Docker Desktopアプリを起動して、タスクバーのクジラアイコンが安定するまで待ってから再度コマンドを実行してください。</p>
+                    </div>
+                </details>
+
+                <details class="border rounded-xl overflow-hidden">
+                    <summary class="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 font-bold">
+                        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                        コンテナが「Restarting」を繰り返す
+                    </summary>
+                    <div class="px-4 py-3">
+                        <p class="mb-2">データベース起動に時間がかかっている可能性が高いです。</p>
+                        <p class="font-bold">解決策：</p>
+                        <ol class="list-decimal ml-5 text-sm space-y-1">
+                            <li>30秒〜1分待つ</li>
+                            <li><code class="bg-gray-100 px-1 rounded">docker compose ps</code> で再確認</li>
+                            <li>それでも直らない場合：<code class="bg-gray-100 px-1 rounded">docker compose logs api</code> でエラーを確認</li>
+                        </ol>
+                    </div>
+                </details>
+
+                <details class="border rounded-xl overflow-hidden">
+                    <summary class="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 font-bold">
+                        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                        Windowsファイアウォールの警告が出た
+                    </summary>
+                    <div class="px-4 py-3">
+                        <p class="mb-2">Dockerが通信するための許可を求めています。</p>
+                        <p class="font-bold">解決策：</p>
+                        <p class="text-sm">「プライベートネットワーク」と「パブリックネットワーク」の両方にチェックを入れて「アクセスを許可する」をクリックしてください。</p>
+                    </div>
+                </details>
+
+                <details class="border rounded-xl overflow-hidden">
+                    <summary class="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 font-bold">
+                        <i class="fas fa-exclamation-circle text-red-500 mr-2"></i>
+                        スマートフォンからアクセスしたい
+                    </summary>
+                    <div class="px-4 py-3">
+                        <p class="mb-2">同じWi-Fiに接続していれば、PCのIPアドレスでアクセスできます。</p>
+                        <p class="font-bold">IPアドレスの確認：</p>
+                        <div class="code-block mt-2 !p-3">
+                            <span class="command text-sm">ipconfig | findstr /i "IPv4"</span>
+                        </div>
+                        <p class="text-sm mt-2">例：IPが <code>192.168.1.100</code> の場合 → <code>http://192.168.1.100:3002</code></p>
+                    </div>
+                </details>
+            </div>
+        </section>
+
+        <!-- ===== チェックリスト ===== -->
+        <section class="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl shadow-sm p-6 mb-10 border border-green-200">
+            <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                <i class="fas fa-clipboard-check text-green-600"></i> 完了チェックリスト
+            </h3>
+            <div class="space-y-2">
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>Docker Desktopがインストールされ、起動している</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span><code>docker --version</code> でバージョンが表示される</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>プロジェクトファイルが展開されている</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span><code>.env</code> ファイルが作成されている</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span><code>docker compose build</code> が成功した</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span><code>docker compose up -d</code> で全コンテナが起動した</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>APIヘルスチェックが <code>{"status":"ok"}</code> を返す</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>テストデータが投入された</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>利用者画面（:3002）が表示される</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>管理者画面（:3000）が表示される</span>
+                </label>
+                <label class="checklist-item flex items-center gap-3 p-2 rounded-lg cursor-pointer">
+                    <input type="checkbox" class="w-5 h-5 rounded text-green-600">
+                    <span>呼出テストが成功した！</span>
+                </label>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- フッター -->
+    <footer class="bg-gray-800 text-gray-400 py-8">
+        <div class="max-w-5xl mx-auto px-4 text-center">
+            <p class="mb-2">ウェアラブルナースコールシステム Phase1 - 技術検証版</p>
+            <p class="text-sm">問題が解決しない場合は、<code class="bg-gray-700 px-2 py-0.5 rounded">docker compose logs</code> の出力を添えてご連絡ください。</p>
+        </div>
+    </footer>
+
+    <script>
+    function copyCode(btn, text) {
+        navigator.clipboard.writeText(text).then(() => {
+            btn.innerHTML = '<i class="fas fa-check mr-1"></i>コピー済み';
+            btn.classList.add('copied');
+            setTimeout(() => {
+                btn.innerHTML = '<i class="far fa-copy mr-1"></i>コピー';
+                btn.classList.remove('copied');
+            }, 2000);
+        });
+    }
+    </script>
+</body>
+</html>
