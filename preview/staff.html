@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1">
+    <title>ナースコール - 職員アプリ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * { -webkit-tap-highlight-color: transparent; }
+        body { overscroll-behavior: none; max-width: 480px; margin: 0 auto; }
+
+        @keyframes ring { 0%,100%{transform:rotate(0)} 25%{transform:rotate(15deg)} 50%{transform:rotate(-15deg)} 75%{transform:rotate(10deg)} }
+        .ring-anim { animation: ring 0.5s ease infinite; }
+
+        @keyframes pulse-green { 0%,100%{box-shadow:0 0 0 0 rgba(34,197,94,0.4)} 50%{box-shadow:0 0 0 15px rgba(34,197,94,0)} }
+        .pulse-green { animation: pulse-green 2s infinite; }
+
+        .screen { display: none; flex-direction: column; min-height: 100vh; }
+        .screen.active { display: flex; }
+
+        .nav-btn.active { color: #2563eb; }
+        .nav-btn.active .nav-dot { background: #2563eb; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+<!-- ============================================================ -->
+<!-- 画面1: 待機画面 -->
+<!-- ============================================================ -->
+<div id="screenWaiting" class="screen active">
+    <!-- ヘッダー -->
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-hospital text-blue-600 text-lg"></i>
+            <span class="font-bold text-lg">ナースコール</span>
+            <span class="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">Phase1</span>
+        </div>
+        <div class="flex items-center gap-1.5" id="connStatus">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            <span class="text-xs text-green-600">接続中</span>
+        </div>
+    </header>
+
+    <!-- メインコンテンツ -->
+    <main class="flex-1 flex flex-col items-center justify-center px-6">
+        <div class="w-28 h-28 rounded-full bg-green-50 flex items-center justify-center mb-6">
+            <i class="fas fa-headset text-green-500 text-5xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-gray-700 mb-2">待機中</h2>
+        <p class="text-gray-400 text-sm mb-8">利用者からの呼出を待っています</p>
+
+        <!-- デモボタン -->
+        <button onclick="simulateIncoming()" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-lg hover:bg-blue-700 active:scale-95 transition-all">
+            <i class="fas fa-bell mr-2"></i>着信をシミュレート（デモ）
+        </button>
+
+        <!-- 最近の通知 -->
+        <div id="recentNotifs" class="w-full mt-8 space-y-2"></div>
+    </main>
+
+    <!-- ナビゲーション -->
+    <nav class="bg-white border-t border-gray-200 flex sticky bottom-0">
+        <button onclick="showTab('waiting')" class="nav-btn active flex-1 py-3 flex flex-col items-center text-xs">
+            <i class="fas fa-home text-lg mb-1"></i>
+            <span>待機</span>
+        </button>
+        <button onclick="showTab('history')" class="nav-btn flex-1 py-3 flex flex-col items-center text-xs text-gray-400">
+            <div class="relative">
+                <i class="fas fa-history text-lg mb-1"></i>
+                <span id="historyBadge" class="hidden absolute -top-1 -right-2 bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center">0</span>
+            </div>
+            <span>履歴</span>
+        </button>
+    </nav>
+</div>
+
+<!-- ============================================================ -->
+<!-- 画面2: 着信画面 -->
+<!-- ============================================================ -->
+<div id="screenIncoming" class="screen bg-gradient-to-b from-indigo-900 to-indigo-950 text-white">
+    <div class="flex-1 flex flex-col items-center justify-center px-6">
+        <p class="text-indigo-300 text-sm mb-6 tracking-wider">利用者からの呼出</p>
+
+        <div class="w-28 h-28 rounded-full bg-white/10 flex items-center justify-center mb-6">
+            <i class="fas fa-phone-volume text-5xl ring-anim"></i>
+        </div>
+
+        <h2 id="incomingName" class="text-3xl font-bold mb-2">田中 太郎</h2>
+        <p id="incomingRoom" class="text-indigo-300 text-lg mb-2">101号室</p>
+        <p id="incomingTime" class="text-indigo-400 text-sm font-mono mb-12">00:00</p>
+
+        <div class="flex gap-12">
+            <!-- 拒否 -->
+            <div class="text-center">
+                <button onclick="rejectCall()" class="w-16 h-16 rounded-full bg-red-500 flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+                    <i class="fas fa-phone-slash text-2xl"></i>
+                </button>
+                <span class="text-sm text-indigo-300 mt-2 block">拒否</span>
+            </div>
+            <!-- 応答 -->
+            <div class="text-center">
+                <button onclick="answerCall()" class="w-16 h-16 rounded-full bg-green-500 flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+                    <i class="fas fa-phone text-2xl"></i>
+                </button>
+                <span class="text-sm text-indigo-300 mt-2 block">応答</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 画面3: 通話中画面 -->
+<!-- ============================================================ -->
+<div id="screenActive" class="screen bg-gradient-to-b from-green-800 to-green-950 text-white">
+    <div class="flex-1 flex flex-col items-center justify-center px-6">
+        <p class="text-green-300 text-sm mb-1 tracking-wider">通話中</p>
+        <p id="callDuration" class="text-4xl font-light font-mono mb-8">00:00</p>
+
+        <div class="w-24 h-24 rounded-full bg-white/10 flex items-center justify-center mb-4">
+            <i class="fas fa-user text-4xl"></i>
+        </div>
+        <h2 id="activeName" class="text-2xl font-bold mb-1">田中 太郎</h2>
+        <p id="activeRoom" class="text-green-300 mb-12">101号室</p>
+
+        <div class="flex gap-8 mb-8">
+            <div class="text-center">
+                <button id="muteBtn" onclick="toggleMute()" class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center active:scale-90 transition">
+                    <i class="fas fa-microphone text-xl"></i>
+                </button>
+                <span class="text-xs text-green-300 mt-1 block">ミュート</span>
+            </div>
+            <div class="text-center">
+                <button onclick="endCall()" class="w-20 h-20 rounded-full bg-red-500 flex items-center justify-center shadow-xl active:scale-90 transition">
+                    <i class="fas fa-phone-slash text-3xl"></i>
+                </button>
+                <span class="text-xs text-green-300 mt-1 block">終了</span>
+            </div>
+            <div class="text-center">
+                <button id="speakerBtn" onclick="toggleSpeaker()" class="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center active:scale-90 transition">
+                    <i class="fas fa-volume-up text-xl"></i>
+                </button>
+                <span class="text-xs text-green-300 mt-1 block">スピーカー</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 画面4: 履歴画面 -->
+<!-- ============================================================ -->
+<div id="screenHistory" class="screen">
+    <header class="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-hospital text-blue-600 text-lg"></i>
+            <span class="font-bold text-lg">ナースコール</span>
+        </div>
+        <div class="flex items-center gap-1.5" id="connStatus2">
+            <span class="w-2 h-2 rounded-full bg-green-500"></span>
+            <span class="text-xs text-green-600">接続中</span>
+        </div>
+    </header>
+
+    <div class="px-4 py-3">
+        <h2 class="text-lg font-bold text-gray-800 mb-3">通話履歴</h2>
+    </div>
+
+    <main class="flex-1 overflow-y-auto px-4" id="historyList">
+        <!-- デモデータ挿入 -->
+    </main>
+
+    <nav class="bg-white border-t border-gray-200 flex sticky bottom-0">
+        <button onclick="showTab('waiting')" class="nav-btn flex-1 py-3 flex flex-col items-center text-xs text-gray-400">
+            <i class="fas fa-home text-lg mb-1"></i>
+            <span>待機</span>
+        </button>
+        <button onclick="showTab('history')" class="nav-btn active flex-1 py-3 flex flex-col items-center text-xs">
+            <i class="fas fa-history text-lg mb-1"></i>
+            <span>履歴</span>
+        </button>
+    </nav>
+</div>
+
+<script>
+// ============================================================
+// 状態管理
+// ============================================================
+let state = {
+    screen: 'waiting',
+    isMuted: false,
+    isSpeaker: false,
+    incomingTimer: null,
+    callTimer: null,
+    callSeconds: 0,
+    incomingSeconds: 0,
+    callHistory: [],
+    currentCaller: null,
+};
+
+// デモ用の利用者データ
+const DEMO_CALLERS = [
+    { name: '田中 太郎', room: '101', ext: '1001' },
+    { name: '佐藤 花子', room: '102', ext: '1002' },
+    { name: '鈴木 一郎', room: '103', ext: '1003' },
+];
+
+// ============================================================
+// 画面切り替え
+// ============================================================
+function showScreen(screenName) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById('screen' + screenName.charAt(0).toUpperCase() + screenName.slice(1)).classList.add('active');
+    state.screen = screenName;
+}
+
+function showTab(tab) {
+    if (tab === 'waiting') {
+        showScreen('waiting');
+    } else if (tab === 'history') {
+        showScreen('history');
+        renderHistory();
+    }
+    // ナビゲーションのアクティブ状態
+    document.querySelectorAll('.nav-btn').forEach(b => {
+        b.classList.remove('active');
+        b.classList.add('text-gray-400');
+    });
+}
+
+// ============================================================
+// 着信シミュレーション
+// ============================================================
+function simulateIncoming() {
+    const caller = DEMO_CALLERS[Math.floor(Math.random() * DEMO_CALLERS.length)];
+    state.currentCaller = caller;
+    state.incomingSeconds = 0;
+
+    document.getElementById('incomingName').textContent = caller.name;
+    document.getElementById('incomingRoom').textContent = caller.room + '号室';
+
+    showScreen('incoming');
+
+    // 着信タイマー
+    state.incomingTimer = setInterval(() => {
+        state.incomingSeconds++;
+        const m = String(Math.floor(state.incomingSeconds / 60)).padStart(2, '0');
+        const s = String(state.incomingSeconds % 60).padStart(2, '0');
+        document.getElementById('incomingTime').textContent = `${m}:${s}`;
+    }, 1000);
+
+    // バイブレーション（対応端末のみ）
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200, 100, 200]);
+
+    // 通知履歴に追加
+    addNotification(caller);
+}
+
+// ============================================================
+// 通話操作
+// ============================================================
+function answerCall() {
+    clearInterval(state.incomingTimer);
+    state.callSeconds = 0;
+
+    document.getElementById('activeName').textContent = state.currentCaller.name;
+    document.getElementById('activeRoom').textContent = state.currentCaller.room + '号室';
+
+    showScreen('active');
+
+    state.callTimer = setInterval(() => {
+        state.callSeconds++;
+        const m = String(Math.floor(state.callSeconds / 60)).padStart(2, '0');
+        const s = String(state.callSeconds % 60).padStart(2, '0');
+        document.getElementById('callDuration').textContent = `${m}:${s}`;
+    }, 1000);
+}
+
+function rejectCall() {
+    clearInterval(state.incomingTimer);
+    addHistory(state.currentCaller, 'missed', 0);
+    showScreen('waiting');
+}
+
+function endCall() {
+    clearInterval(state.callTimer);
+    addHistory(state.currentCaller, 'ended', state.callSeconds);
+    showScreen('waiting');
+}
+
+function toggleMute() {
+    state.isMuted = !state.isMuted;
+    const btn = document.getElementById('muteBtn');
+    btn.innerHTML = state.isMuted
+        ? '<i class="fas fa-microphone-slash text-xl text-red-400"></i>'
+        : '<i class="fas fa-microphone text-xl"></i>';
+    btn.className = state.isMuted
+        ? 'w-14 h-14 rounded-full bg-white/40 flex items-center justify-center'
+        : 'w-14 h-14 rounded-full bg-white/20 flex items-center justify-center';
+}
+
+function toggleSpeaker() {
+    state.isSpeaker = !state.isSpeaker;
+    const btn = document.getElementById('speakerBtn');
+    btn.className = state.isSpeaker
+        ? 'w-14 h-14 rounded-full bg-white/40 flex items-center justify-center'
+        : 'w-14 h-14 rounded-full bg-white/20 flex items-center justify-center';
+}
+
+// ============================================================
+// 通知・履歴管理
+// ============================================================
+function addNotification(caller) {
+    const el = document.createElement('div');
+    el.className = 'bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3';
+    el.innerHTML = `
+        <span class="text-blue-500"><i class="fas fa-bell"></i></span>
+        <div class="flex-1">
+            <div class="font-bold text-sm text-gray-800">${caller.name}さん（${caller.room}号室）</div>
+            <div class="text-xs text-gray-400">${new Date().toLocaleTimeString('ja-JP')}</div>
+        </div>
+    `;
+    const container = document.getElementById('recentNotifs');
+    container.insertBefore(el, container.firstChild);
+    if (container.children.length > 5) container.removeChild(container.lastChild);
+}
+
+function addHistory(caller, status, duration) {
+    state.callHistory.unshift({
+        caller: caller,
+        status: status,
+        duration: duration,
+        time: new Date(),
+    });
+}
+
+function renderHistory() {
+    const list = document.getElementById('historyList');
+    if (state.callHistory.length === 0) {
+        list.innerHTML = '<div class="text-center text-gray-400 py-16"><i class="fas fa-history text-4xl mb-3 block opacity-30"></i>通話履歴はありません</div>';
+        return;
+    }
+
+    list.innerHTML = state.callHistory.map(h => {
+        const statusIcon = h.status === 'ended'
+            ? '<i class="fas fa-phone text-green-500"></i>'
+            : '<i class="fas fa-phone-missed text-red-500"></i>';
+        const statusText = h.status === 'ended' ? '終了' : '不在';
+        const dur = h.duration > 0 ? `${Math.floor(h.duration/60)}分${h.duration%60}秒` : '-';
+        return `
+            <div class="flex items-center gap-3 py-3 border-b border-gray-100">
+                <div class="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">${statusIcon}</div>
+                <div class="flex-1">
+                    <div class="font-bold text-sm">${h.caller.name} → 自分</div>
+                    <div class="text-xs text-gray-400">${statusText} ${dur !== '-' ? '(' + dur + ')' : ''}</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-xs text-gray-500">${h.time.toLocaleDateString('ja-JP', {month:'short',day:'numeric'})}</div>
+                    <div class="text-xs text-gray-400">${h.time.toLocaleTimeString('ja-JP', {hour:'2-digit',minute:'2-digit'})}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// 初期デモ履歴
+state.callHistory = [
+    { caller: DEMO_CALLERS[0], status: 'ended', duration: 95, time: new Date(Date.now() - 3600000) },
+    { caller: DEMO_CALLERS[1], status: 'missed', duration: 0, time: new Date(Date.now() - 7200000) },
+    { caller: DEMO_CALLERS[2], status: 'ended', duration: 42, time: new Date(Date.now() - 10800000) },
+];
+</script>
+</body>
+</html>
