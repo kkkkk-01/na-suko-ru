@@ -1,33 +1,47 @@
-# prod
-dist/
-
-# dev
-.yarn/
-!.yarn/releases
-.vscode/*
-!.vscode/launch.json
-!.vscode/*.code-snippets
-.idea/workspace.xml
-.idea/usage.statistics.xml
-.idea/shelf
-
-# deps
+# Dependencies
 node_modules/
-.wrangler
+.pnp/
+.pnp.js
 
-# env
+# Build output
+dist/
+build/
+
+# Environment
 .env
-.env.production
 .dev.vars
 
-# logs
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 logs/
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-# misc
-.DS_Store
+# Docker
+.wrangler/
+
+# Test output
+*.test.log
+stability_test_*.log
+
+# Flutter
+flutter-staff/.dart_tool/
+flutter-staff/.packages
+flutter-staff/build/
+flutter-staff/.flutter-plugins
+flutter-staff/.flutter-plugins-dependencies
+
+# Postgres
+postgres_data/
+
+# Asterisk
+asterisk_logs/

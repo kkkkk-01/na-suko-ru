@@ -1,0 +1,45 @@
+name: nursecall_staff
+description: ナースコールシステム - 職員アプリ (Phase1)
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+
+  # SIP/VoIP
+  sip_ua: ^0.5.1
+  flutter_webrtc: ^0.11.0
+
+  # Push通知
+  firebase_core: ^2.24.0
+  firebase_messaging: ^14.7.0
+  flutter_local_notifications: ^17.0.0
+
+  # ネットワーク・API
+  http: ^1.2.0
+  web_socket_channel: ^2.4.0
+  socket_io_client: ^2.0.3+1
+
+  # 状態管理
+  provider: ^6.1.1
+  shared_preferences: ^2.2.2
+
+  # UI
+  intl: ^0.19.0
+  flutter_ringtone_player: ^4.0.0+2
+  vibration: ^1.8.4
+  permission_handler: ^11.2.0
+  wakelock_plus: ^1.1.4
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true

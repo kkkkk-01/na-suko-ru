@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # ============================================================
+  # PostgreSQL データベース
+  # ============================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: nursecall-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nursecall
+      POSTGRES_USER: nursecall
+      POSTGRES_PASSWORD: nursecall_dev_2024
+      TZ: Asia/Tokyo
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nursecall"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # Asterisk SIP/WebRTC サーバー
+  # ============================================================
+  asterisk:
+    build:
+      context: ./asterisk
+      dockerfile: Dockerfile
+    container_name: nursecall-asterisk
+    restart: unless-stopped
+    ports:
+      - "5060:5060/udp"       # SIP UDP
+      - "5060:5060/tcp"       # SIP TCP
+      - "5061:5061/tcp"       # SIP TLS
+      - "8088:8088/tcp"       # WebSocket HTTP
+      - "8089:8089/tcp"       # WebSocket HTTPS
+      - "10000-10100:10000-10100/udp"  # RTP (Phase1は範囲を絞る)
+    volumes:
+      - ./asterisk/config:/etc/asterisk/custom
+      - asterisk_logs:/var/log/asterisk
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # Node.js API サーバー
+  # ============================================================
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: nursecall-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      DATABASE_URL: postgresql://nursecall:nursecall_dev_2024@postgres:5432/nursecall
+      ASTERISK_HOST: asterisk
+      ASTERISK_ARI_PORT: 8088
+      ASTERISK_ARI_USER: nursecall
+      ASTERISK_ARI_PASSWORD: nursecall_ari_2024
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-your-project-id}
+      FCM_PRIVATE_KEY: ${FCM_PRIVATE_KEY:-}
+      FCM_CLIENT_EMAIL: ${FCM_CLIENT_EMAIL:-}
+      API_KEY: nursecall_api_key_dev
+      JWT_SECRET: nursecall_jwt_secret_dev_2024
+      TZ: Asia/Tokyo
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./server/src:/app/src
+      - ./server/package.json:/app/package.json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      asterisk:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # 利用者Web画面 (呼出ボタン + WebRTC)
+  # ============================================================
+  client-user:
+    image: nginx:alpine
+    container_name: nursecall-client-user
+    restart: unless-stopped
+    ports:
+      - "3002:80"
+    volumes:
+      - ./client-user/public:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # React 管理画面
+  # ============================================================
+  client-admin:
+    build:
+      context: ./client-admin
+      dockerfile: Dockerfile
+    container_name: nursecall-admin
+    restart: unless-stopped
+    environment:
+      VITE_API_URL: http://localhost:3001
+      VITE_WS_URL: ws://localhost:3001
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./client-admin/src:/app/src
+      - ./client-admin/public:/app/public
+    depends_on:
+      - api
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # Nginx リバースプロキシ
+  # ============================================================
+  nginx:
+    image: nginx:alpine
+    container_name: nursecall-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - client-admin
+      - client-user
+    networks:
+      - nursecall-net
+
+volumes:
+  postgres_data:
+    driver: local
+  asterisk_logs:
+    driver: local
+
+networks:
+  nursecall-net:
+    driver: bridge
