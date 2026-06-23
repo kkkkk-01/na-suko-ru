@@ -1,13 +1,12 @@
-FROM debian:bookworm-slim
+FROM debian:bullseye-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Asterisk インストール
+# Asterisk インストール (Debian 11 Bullseye にはAsteriskパッケージあり)
 RUN apt-get update && apt-get install -y \
     asterisk \
     asterisk-modules \
-    asterisk-core-sounds-en-gsm \
-    asterisk-core-sounds-en-wav \
+    asterisk-core-sounds-en \
     curl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
