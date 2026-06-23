@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     asterisk \
     asterisk-modules \
-    asterisk-core-sounds-ja-gsm \
+    asterisk-core-sounds-en-gsm \
     asterisk-core-sounds-en-wav \
     curl \
     && apt-get clean \
