@@ -13,11 +13,33 @@ router.post('/request', async (req, res, next) => {
       caller_id: Joi.number().integer().required(),
       callee_id: Joi.number().integer(),
       message: Joi.string().max(500).default('呼出'),
+      beacon_id: Joi.string().max(50).allow(null, ''),   // BLE位置情報
+      rssi: Joi.number().integer().allow(null),
     });
     const { error, value } = schema.validate(req.body);
     if (error) { error.isJoi = true; throw error; }
 
-    const { caller_id, callee_id, message } = value;
+    const { caller_id, callee_id, message, beacon_id, rssi } = value;
+
+    // 位置情報解決（呼出時に指定がなければハートビートの最新位置を使用）
+    let location = null;
+    let resolvedBeaconId = beacon_id;
+    if (!resolvedBeaconId) {
+      const devLoc = await query(
+        'SELECT current_beacon_id FROM devices WHERE user_id = $1 AND current_beacon_id IS NOT NULL LIMIT 1',
+        [caller_id]
+      );
+      resolvedBeaconId = devLoc.rows[0]?.current_beacon_id || null;
+    }
+    if (resolvedBeaconId) {
+      const beaconResult = await query(
+        'SELECT beacon_id, name, floor, area_type FROM beacons WHERE beacon_id = $1 AND is_active = true',
+        [resolvedBeaconId]
+      );
+      if (beaconResult.rows.length > 0) {
+        location = { ...beaconResult.rows[0], rssi: rssi ?? null };
+      }
+    }
 
     // 発信者確認
     const callerResult = await query(
@@ -59,10 +81,10 @@ router.post('/request', async (req, res, next) => {
 
     // 通話レコード作成
     const callResult = await query(
-      `INSERT INTO calls (caller_id, callee_id, status, started_at)
-       VALUES ($1, $2, 'ringing', NOW())
+      `INSERT INTO calls (caller_id, callee_id, status, started_at, location_beacon_id, location_name, location_rssi)
+       VALUES ($1, $2, 'ringing', NOW(), $3, $4, $5)
        RETURNING *`,
-      [caller_id, targetCalleeId]
+      [caller_id, targetCalleeId, location?.beacon_id || null, location?.name || null, location?.rssi || null]
     );
     const call = callResult.rows[0];
 
@@ -76,7 +98,7 @@ router.post('/request', async (req, res, next) => {
     // Push通知 + WebSocket通知
     const notificationService = req.app.locals.notificationService;
     const notifResult = await notificationService.sendCallNotification(
-      caller_id, targetCalleeId, call.id
+      caller_id, targetCalleeId, call.id, location
     );
 
     logger.info(`Call request: ${caller_id} -> ${targetCalleeId} (call_id: ${call.id})`);
@@ -86,6 +108,7 @@ router.post('/request', async (req, res, next) => {
       notification_id: notifResult.notification.id,
       status: 'ringing',
       callee: calleeResult.rows[0],
+      location,
       message: '通知を送信しました',
     });
   } catch (error) {

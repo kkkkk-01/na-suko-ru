@@ -18,6 +18,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./server/migrations:/docker-entrypoint-initdb.d
+      # 初回起動時にmigrations内の.sqlが番号順に自動実行されます
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nursecall"]
       interval: 5s
@@ -109,22 +110,32 @@ services:
       - nursecall-net
 
   # ============================================================
-  # React 管理画面
+  # 職員Web画面 (ナースコール応答・位置付き着信)
+  # ============================================================
+  client-staff:
+    image: nginx:alpine
+    container_name: nursecall-client-staff
+    restart: unless-stopped
+    ports:
+      - "3003:80"
+    volumes:
+      - ./client-staff/public:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # 管理画面 (フロアマップ所在監視・アラート)
   # ============================================================
   client-admin:
-    build:
-      context: ./client-admin
-      dockerfile: Dockerfile
+    image: nginx:alpine
     container_name: nursecall-admin
     restart: unless-stopped
-    environment:
-      VITE_API_URL: http://localhost:3001
-      VITE_WS_URL: ws://localhost:3001
     ports:
-      - "3000:3000"
+      - "3000:80"
     volumes:
-      - ./client-admin/src:/app/src
-      - ./client-admin/public:/app/public
+      - ./client-admin/public:/usr/share/nginx/html:ro
     depends_on:
       - api
     networks:
@@ -145,6 +156,7 @@ services:
       - api
       - client-admin
       - client-user
+      - client-staff
     networks:
       - nursecall-net
 

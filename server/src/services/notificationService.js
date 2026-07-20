@@ -85,8 +85,8 @@ class NotificationService {
     logger.debug(`WebSocket event: ${event} to ${room || 'all'}`);
   }
 
-  // 呼出通知を送信
-  async sendCallNotification(callerId, calleeId, callId) {
+  // 呼出通知を送信（location: {beacon_id, name, rssi} 位置情報付き）
+  async sendCallNotification(callerId, calleeId, callId, location = null) {
     // 発信者情報取得
     const callerResult = await query(
       'SELECT name, room_number, extension FROM users WHERE id = $1',
@@ -95,7 +95,11 @@ class NotificationService {
     const caller = callerResult.rows[0];
 
     const title = 'ナースコール';
-    const body = `${caller.name}さん（${caller.room_number || ''}号室）から呼出があります`;
+    // 革命ポイント: 「どこから呼んだか」が分かる
+    const locationText = location?.name
+      ? `現在【${location.name}】付近`
+      : `${caller.room_number || ''}号室`;
+    const body = `${caller.name}さん・${locationText}から呼出があります`;
 
     // DB記録
     const notifResult = await query(
@@ -115,8 +119,8 @@ class NotificationService {
       caller_room: caller.room_number || '',
     });
 
-    // WebSocket通知
-    this.sendWebSocketNotification('call:incoming', {
+    // 着信ペイロード（位置情報付き）
+    const incomingPayload = {
       call_id: callId,
       caller: {
         id: callerId,
@@ -124,17 +128,62 @@ class NotificationService {
         room_number: caller.room_number,
         extension: caller.extension,
       },
+      location: location ? {
+        beacon_id: location.beacon_id,
+        name: location.name,
+        rssi: location.rssi ?? null,
+      } : null,
       notification_id: notification.id,
       timestamp: new Date().toISOString(),
-    }, `user_${calleeId}`);
+    };
+
+    // WebSocket通知（担当職員宛）
+    this.sendWebSocketNotification('call:incoming', incomingPayload, `user_${calleeId}`);
+
+    // 職員全員（staffルーム）にも通知 — 職員Web画面が受信
+    this.sendWebSocketNotification('call:incoming', incomingPayload, 'staff');
 
     // 管理画面にも通知
     this.sendWebSocketNotification('notification:new', {
       ...notification,
       caller,
+      location,
     }, 'admin');
 
+    // 無応答エスカレーション: 30秒後に未応答なら全員に再通知 + アラート
+    this.scheduleEscalation(callId, incomingPayload);
+
     return { notification, pushResult };
+  }
+
+  // 呼出無応答エスカレーション（不達を必ず検知する仕組み）
+  scheduleEscalation(callId, payload, delayMs = 30000) {
+    setTimeout(async () => {
+      try {
+        const result = await query('SELECT status FROM calls WHERE id = $1', [callId]);
+        if (result.rows.length > 0 && result.rows[0].status === 'ringing') {
+          logger.warn(`Call ${callId} unanswered after ${delayMs / 1000}s - escalating`);
+
+          // アラート発報
+          const alert = await query(
+            `INSERT INTO alerts (type, severity, user_id, call_id, message)
+             VALUES ('unanswered_call', 'critical', $1, $2, $3) RETURNING *`,
+            [payload.caller.id, callId,
+             `${payload.caller.name}さんの呼出（${payload.location?.name || payload.caller.room_number + '号室'}）に${delayMs / 1000}秒間応答がありません`]
+          );
+
+          // 全職員 + 管理者にエスカレーション通知
+          this.sendWebSocketNotification('call:escalation', {
+            ...payload,
+            alert_id: alert.rows[0].id,
+            escalated_at: new Date().toISOString(),
+          }, 'staff');
+          this.sendWebSocketNotification('alert:new', alert.rows[0], 'admin');
+        }
+      } catch (err) {
+        logger.error('Escalation check failed:', err.message);
+      }
+    }, delayMs);
   }
 }
 

@@ -1,367 +1,247 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>ナースコール - 利用者端末</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
-    <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
-    <style>
-        * { -webkit-tap-highlight-color: transparent; }
-        body { overscroll-behavior: none; }
-
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 0.8; }
-            50% { transform: scale(1.1); opacity: 0.3; }
-            100% { transform: scale(0.8); opacity: 0.8; }
-        }
-
-        @keyframes calling {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
-        }
-
-        .pulse-ring {
-            animation: pulse-ring 2s ease-in-out infinite;
-        }
-
-        .calling-animation {
-            animation: calling 1s ease-in-out infinite;
-        }
-
-        .btn-call {
-            transition: all 0.2s ease;
-            touch-action: manipulation;
-        }
-
-        .btn-call:active {
-            transform: scale(0.95);
-        }
-
-        .status-dot {
-            width: 12px; height: 12px; border-radius: 50%;
-            display: inline-block; margin-right: 8px;
-        }
-
-        .status-connected { background: #22c55e; }
-        .status-disconnected { background: #ef4444; }
-        .status-calling { background: #f59e0b; animation: pulse-ring 1s infinite; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>ナースコール - 利用者端末</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<style>
+  body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
+  .call-btn { transition: transform .1s; }
+  .call-btn:active { transform: scale(.93); }
+  @keyframes pulse-ring { 0%{box-shadow:0 0 0 0 rgba(249,115,22,.5)} 70%{box-shadow:0 0 0 30px rgba(249,115,22,0)} 100%{box-shadow:0 0 0 0 rgba(249,115,22,0)} }
+  .ringing { animation: pulse-ring 1.5s infinite; }
+</style>
 </head>
-<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center select-none">
+<body class="bg-gray-100 min-h-screen">
+<main class="max-w-md mx-auto p-4">
 
-    <!-- ステータスバー -->
-    <div class="fixed top-0 left-0 right-0 bg-gray-800 p-3 flex items-center justify-between z-50">
-        <div class="flex items-center">
-            <span id="statusDot" class="status-dot status-disconnected"></span>
-            <span id="statusText" class="text-sm text-gray-300">接続中...</span>
-        </div>
-        <div class="text-sm text-gray-400">
-            <i class="fas fa-user mr-1"></i>
-            <span id="userName">利用者</span>
-            <span id="roomNumber" class="ml-2 text-gray-500"></span>
-        </div>
+  <!-- ヘッダー -->
+  <header class="bg-white rounded-2xl shadow p-4 mb-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-gray-800"><i class="fas fa-id-badge text-orange-500 mr-2"></i>利用者端末</h1>
+      <p class="text-xs text-gray-500">名札型端末シミュレーター</p>
     </div>
+    <div id="conn-status" class="text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600">接続中...</div>
+  </header>
 
-    <!-- メインエリア -->
-    <div id="mainArea" class="flex flex-col items-center justify-center flex-1 w-full px-4">
+  <!-- 利用者選択 -->
+  <section id="user-select-section" class="bg-white rounded-2xl shadow p-4 mb-4">
+    <label class="text-sm font-semibold text-gray-700 block mb-2">利用者を選択</label>
+    <select id="user-select" class="w-full border rounded-xl p-3 text-lg">
+      <option value="1" data-room="101">田中 太郎（101号室）</option>
+      <option value="2" data-room="102">佐藤 花子（102号室）</option>
+      <option value="3" data-room="103">鈴木 一郎（103号室）</option>
+    </select>
+  </section>
 
-        <!-- 待機画面 -->
-        <div id="idleScreen" class="text-center">
-            <div class="relative mb-8">
-                <!-- パルスリング -->
-                <div class="absolute inset-0 bg-red-500 rounded-full opacity-20 pulse-ring"
-                     style="width: 280px; height: 280px; margin: auto; left: 0; right: 0; top: -15px;"></div>
+  <!-- ビーコンシミュレーター（現在地） -->
+  <section class="bg-white rounded-2xl shadow p-4 mb-4">
+    <label class="text-sm font-semibold text-gray-700 block mb-1">
+      <i class="fas fa-location-dot text-blue-500 mr-1"></i>現在地（BLEビーコンシミュレーター）
+    </label>
+    <p class="text-xs text-gray-400 mb-2">実機ではESP32が最寄りビーコンを自動検知します</p>
+    <div id="beacon-grid" class="grid grid-cols-2 gap-2"></div>
+  </section>
 
-                <!-- 呼出ボタン -->
-                <button id="callButton" class="btn-call relative z-10 w-64 h-64 rounded-full bg-gradient-to-b from-red-500 to-red-700 shadow-2xl shadow-red-500/50 flex items-center justify-center hover:from-red-400 hover:to-red-600 focus:outline-none focus:ring-4 focus:ring-red-300">
-                    <div class="text-center">
-                        <i class="fas fa-phone-volume text-6xl mb-3 block"></i>
-                        <span class="text-4xl font-bold block">呼出</span>
-                    </div>
-                </button>
-            </div>
-            <p class="text-gray-400 text-lg">ボタンを押すと職員を呼び出します</p>
-        </div>
+  <!-- バッテリーシミュレーター -->
+  <section class="bg-white rounded-2xl shadow p-4 mb-4">
+    <label class="text-sm font-semibold text-gray-700 flex justify-between">
+      <span><i class="fas fa-battery-half text-green-500 mr-1"></i>バッテリー残量</span>
+      <span id="battery-label" class="font-mono">85%</span>
+    </label>
+    <input id="battery-slider" type="range" min="1" max="100" value="85" class="w-full mt-2">
+    <p class="text-xs text-gray-400 mt-1">20%以下でサーバーが自動アラートを発報します</p>
+  </section>
 
-        <!-- 呼出中画面 -->
-        <div id="callingScreen" class="text-center hidden">
-            <div class="calling-animation mb-8">
-                <div class="w-48 h-48 rounded-full bg-gradient-to-b from-yellow-500 to-orange-600 shadow-2xl shadow-orange-500/50 flex items-center justify-center mx-auto">
-                    <div class="text-center">
-                        <i class="fas fa-phone-volume text-5xl mb-2 block animate-bounce"></i>
-                        <span class="text-2xl font-bold">呼出中</span>
-                    </div>
-                </div>
-            </div>
-            <p class="text-xl text-yellow-300 mb-4">職員を呼び出しています...</p>
-            <p class="text-gray-400 mb-8" id="callingTimer">00:00</p>
-            <button id="cancelCallButton" class="px-8 py-3 bg-gray-600 rounded-full text-lg hover:bg-gray-500">
-                <i class="fas fa-times mr-2"></i>取り消し
-            </button>
-        </div>
+  <!-- 呼出ボタン -->
+  <section id="screen-idle" class="text-center py-6">
+    <button id="call-button" class="call-btn w-52 h-52 rounded-full bg-orange-500 hover:bg-orange-600 text-white shadow-2xl mx-auto flex flex-col items-center justify-center">
+      <i class="fas fa-bell text-5xl mb-2"></i>
+      <span class="text-3xl font-bold">呼出</span>
+    </button>
+    <p class="text-gray-500 mt-4 text-sm">ボタンを押すと職員に通知されます</p>
+  </section>
 
-        <!-- 通話中画面 -->
-        <div id="inCallScreen" class="text-center hidden">
-            <div class="mb-8">
-                <div class="w-48 h-48 rounded-full bg-gradient-to-b from-green-500 to-green-700 shadow-2xl shadow-green-500/50 flex items-center justify-center mx-auto">
-                    <div class="text-center">
-                        <i class="fas fa-headset text-5xl mb-2 block"></i>
-                        <span class="text-xl font-bold" id="calleeNameDisplay">通話中</span>
-                    </div>
-                </div>
-            </div>
-            <p class="text-green-300 text-xl mb-2">通話中</p>
-            <p class="text-3xl font-mono mb-8" id="callTimer">00:00</p>
-            <button id="endCallButton" class="px-10 py-4 bg-red-600 rounded-full text-xl hover:bg-red-500">
-                <i class="fas fa-phone-slash mr-2"></i>通話終了
-            </button>
-        </div>
+  <!-- 呼出中 -->
+  <section id="screen-calling" class="hidden text-center py-6">
+    <div class="ringing w-52 h-52 rounded-full bg-orange-400 text-white shadow-2xl mx-auto flex flex-col items-center justify-center">
+      <i class="fas fa-bell fa-shake text-5xl mb-2"></i>
+      <span class="text-xl font-bold">呼出中...</span>
+      <span class="text-sm mt-1">職員を呼んでいます</span>
     </div>
+    <button id="cancel-button" class="mt-6 px-8 py-3 bg-gray-500 text-white rounded-full font-bold"><i class="fas fa-xmark mr-1"></i>キャンセル</button>
+  </section>
 
-    <!-- フッター -->
-    <div class="fixed bottom-0 left-0 right-0 bg-gray-800 p-2 text-center text-xs text-gray-500">
-        ナースコールシステム Phase1 技術検証版
+  <!-- 通話中 -->
+  <section id="screen-active" class="hidden text-center py-6">
+    <div class="w-52 h-52 rounded-full bg-green-500 text-white shadow-2xl mx-auto flex flex-col items-center justify-center">
+      <i class="fas fa-phone-volume text-5xl mb-2"></i>
+      <span class="text-xl font-bold">通話中</span>
+      <span id="call-timer" class="text-2xl font-mono mt-1">00:00</span>
     </div>
+    <p id="active-staff-name" class="text-gray-600 mt-3 font-semibold"></p>
+    <button id="end-button" class="mt-4 px-8 py-3 bg-red-500 text-white rounded-full font-bold"><i class="fas fa-phone-slash mr-1"></i>通話を終了</button>
+  </section>
 
-    <script>
-    // ============================================================
-    // 設定
-    // ============================================================
-    const CONFIG = {
-        API_URL: window.location.hostname === 'localhost'
-            ? 'http://localhost:3001/api/v1'
-            : `${window.location.protocol}//${window.location.hostname}:3001/api/v1`,
-        WS_URL: window.location.hostname === 'localhost'
-            ? 'http://localhost:3001'
-            : `${window.location.protocol}//${window.location.hostname}:3001`,
-        API_KEY: 'nursecall_api_key_dev',
-        CALLER_ID: 1, // Phase1: 固定の利用者ID
-    };
+  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg text-sm z-50"></div>
+  <audio id="remote-audio" autoplay></audio>
+</main>
 
-    // ============================================================
-    // 状態管理
-    // ============================================================
-    let state = {
-        screen: 'idle', // idle | calling | inCall
-        callId: null,
-        callerTimer: null,
-        callTimer: null,
-        callStartTime: null,
-        callingStartTime: null,
-    };
+<script>
+const CONFIG = (() => {
+  const p = location.port;
+  const base = (p === '3000' || p === '3002' || p === '3003')
+    ? `${location.protocol}//${location.hostname}:3001` : '';
+  return { API: base + '/api/v1', WS: base || undefined, KEY: 'nursecall_api_key_dev' };
+})();
 
-    // ============================================================
-    // DOM要素
-    // ============================================================
-    const elements = {
-        statusDot: document.getElementById('statusDot'),
-        statusText: document.getElementById('statusText'),
-        userName: document.getElementById('userName'),
-        roomNumber: document.getElementById('roomNumber'),
-        idleScreen: document.getElementById('idleScreen'),
-        callingScreen: document.getElementById('callingScreen'),
-        inCallScreen: document.getElementById('inCallScreen'),
-        callButton: document.getElementById('callButton'),
-        cancelCallButton: document.getElementById('cancelCallButton'),
-        endCallButton: document.getElementById('endCallButton'),
-        callingTimer: document.getElementById('callingTimer'),
-        callTimer: document.getElementById('callTimer'),
-        calleeNameDisplay: document.getElementById('calleeNameDisplay'),
-    };
+const $ = id => document.getElementById(id);
+const state = { userId: 1, beaconId: 'BCN-101', battery: 85, callId: null, timer: null, seconds: 0, pc: null, localStream: null, staffId: null };
 
-    // ============================================================
-    // Socket.IO接続
-    // ============================================================
-    const socket = io(CONFIG.WS_URL, {
-        transports: ['websocket', 'polling'],
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: Infinity,
+function toast(msg) {
+  $('toast').textContent = msg; $('toast').classList.remove('hidden');
+  setTimeout(() => $('toast').classList.add('hidden'), 3000);
+}
+function show(screen) {
+  ['screen-idle','screen-calling','screen-active'].forEach(s => $(s).classList.add('hidden'));
+  $(screen).classList.remove('hidden');
+}
+async function api(path, opts = {}) {
+  const res = await fetch(CONFIG.API + path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': CONFIG.KEY, ...(opts.headers||{}) },
+  });
+  if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+  return res.json();
+}
+
+// ---- Socket.IO ----
+const socket = io(CONFIG.WS, { transports: ['websocket', 'polling'] });
+socket.on('connect', () => {
+  $('conn-status').textContent = 'オンライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-green-100 text-green-700';
+  joinRoom();
+});
+socket.on('disconnect', () => {
+  $('conn-status').textContent = 'オフライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-red-100 text-red-700';
+});
+function joinRoom() { socket.emit('join', { user_id: state.userId, role: 'resident' }); }
+
+socket.on('call:answered', (d) => {
+  if (state.callId && d.call_id === state.callId) {
+    show('screen-active'); startTimer();
+    toast('職員が応答しました');
+  }
+});
+socket.on('call:ended', (d) => {
+  if (state.callId && d.call_id === state.callId) endCallLocal();
+});
+
+// ---- WebRTC（着信側: 職員からofferが来る） ----
+socket.on('webrtc:offer', async (d) => {
+  if (d.call_id !== state.callId) return;
+  state.staffId = d.from_user_id;
+  try {
+    state.pc = createPeer();
+    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.localStream.getTracks().forEach(t => state.pc.addTrack(t, state.localStream));
+    await state.pc.setRemoteDescription(d.sdp);
+    const answer = await state.pc.createAnswer();
+    await state.pc.setLocalDescription(answer);
+    socket.emit('webrtc:answer', { to_user_id: d.from_user_id, call_id: state.callId, sdp: state.pc.localDescription, from_user_id: state.userId });
+  } catch (e) { console.warn('WebRTC/mic unavailable:', e.message); toast('マイク未許可のため音声なしで継続'); }
+});
+socket.on('webrtc:ice', async (d) => {
+  if (state.pc && d.call_id === state.callId) { try { await state.pc.addIceCandidate(d.candidate); } catch(e){} }
+});
+function createPeer() {
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  pc.onicecandidate = e => { if (e.candidate && state.staffId) socket.emit('webrtc:ice', { to_user_id: state.staffId, call_id: state.callId, candidate: e.candidate, from_user_id: state.userId }); };
+  pc.ontrack = e => { $('remote-audio').srcObject = e.streams[0]; };
+  return pc;
+}
+function closePeer() {
+  if (state.pc) { state.pc.close(); state.pc = null; }
+  if (state.localStream) { state.localStream.getTracks().forEach(t => t.stop()); state.localStream = null; }
+}
+
+// ---- ビーコン ----
+async function loadBeacons() {
+  try {
+    const { beacons } = await api('/beacons');
+    const icons = { room:'fa-bed', toilet:'fa-restroom', bath:'fa-bath', dining:'fa-utensils', common:'fa-couch', corridor:'fa-road', entrance:'fa-door-open' };
+    $('beacon-grid').innerHTML = beacons.map(b => `
+      <button data-beacon="${b.beacon_id}" class="beacon-btn border-2 rounded-xl p-2 text-sm text-left ${b.beacon_id===state.beaconId?'border-blue-500 bg-blue-50':'border-gray-200'}">
+        <i class="fas ${icons[b.area_type]||'fa-location-dot'} text-blue-400 mr-1"></i>${b.name}
+      </button>`).join('');
+    document.querySelectorAll('.beacon-btn').forEach(btn => btn.onclick = () => {
+      state.beaconId = btn.dataset.beacon;
+      document.querySelectorAll('.beacon-btn').forEach(b => b.className = b.className.replace('border-blue-500 bg-blue-50','border-gray-200'));
+      btn.className = btn.className.replace('border-gray-200','border-blue-500 bg-blue-50');
+      sendHeartbeat();
     });
+  } catch (e) { console.error(e); }
+}
 
-    socket.on('connect', () => {
-        console.log('WebSocket connected');
-        updateStatus('connected', '接続済み');
-        socket.emit('join', { user_id: CONFIG.CALLER_ID, role: 'resident' });
-    });
+// ---- ハートビート（30秒間隔、ESP32実機と同一仕様） ----
+async function sendHeartbeat() {
+  try {
+    await api('/locations/heartbeat', { method: 'POST', body: JSON.stringify({
+      user_id: state.userId, beacon_id: state.beaconId,
+      rssi: -45 - Math.floor(Math.random() * 25), battery_level: state.battery,
+    })});
+  } catch (e) { console.warn('heartbeat failed', e.message); }
+}
+setInterval(sendHeartbeat, 30000);
 
-    socket.on('disconnect', () => {
-        console.log('WebSocket disconnected');
-        updateStatus('disconnected', '切断');
-    });
+// ---- 呼出 ----
+$('call-button').onclick = async () => {
+  try {
+    const r = await api('/calls/request', { method: 'POST', body: JSON.stringify({
+      caller_id: state.userId, beacon_id: state.beaconId,
+      rssi: -45 - Math.floor(Math.random() * 25),
+    })});
+    state.callId = r.call_id;
+    show('screen-calling');
+    toast(`呼出を送信しました（${r.location?.name || ''}）`);
+  } catch (e) { toast('呼出失敗: ' + e.message); }
+};
+$('cancel-button').onclick = () => endCall('cancelled');
+$('end-button').onclick = () => endCall('normal');
 
-    socket.on('connect_error', (error) => {
-        console.error('WebSocket error:', error);
-        updateStatus('disconnected', '接続エラー');
-    });
+async function endCall(reason) {
+  if (!state.callId) return;
+  try { await api(`/calls/${state.callId}/end`, { method: 'POST', body: JSON.stringify({ end_reason: reason }) }); } catch(e){}
+  endCallLocal();
+}
+function endCallLocal() {
+  closePeer(); stopTimer();
+  state.callId = null; show('screen-idle');
+}
 
-    // 通話応答イベント
-    socket.on('call:answered', (data) => {
-        if (state.callId === data.call_id) {
-            switchScreen('inCall');
-        }
-    });
+// ---- タイマー ----
+function startTimer() {
+  state.seconds = 0;
+  state.timer = setInterval(() => {
+    state.seconds++;
+    const m = String(Math.floor(state.seconds/60)).padStart(2,'0');
+    const s = String(state.seconds%60).padStart(2,'0');
+    $('call-timer').textContent = `${m}:${s}`;
+  }, 1000);
+}
+function stopTimer() { clearInterval(state.timer); $('call-timer').textContent = '00:00'; }
 
-    // 通話終了イベント
-    socket.on('call:ended', (data) => {
-        if (state.callId === data.call_id) {
-            endCall();
-        }
-    });
+// ---- UI ----
+$('user-select').onchange = e => { state.userId = parseInt(e.target.value); joinRoom(); sendHeartbeat(); };
+$('battery-slider').oninput = e => { state.battery = parseInt(e.target.value); $('battery-label').textContent = state.battery + '%'; };
+$('battery-slider').onchange = sendHeartbeat;
 
-    // ============================================================
-    // UI更新
-    // ============================================================
-    function updateStatus(status, text) {
-        elements.statusDot.className = `status-dot status-${status}`;
-        elements.statusText.textContent = text;
-    }
-
-    function switchScreen(screen) {
-        state.screen = screen;
-        elements.idleScreen.classList.toggle('hidden', screen !== 'idle');
-        elements.callingScreen.classList.toggle('hidden', screen !== 'calling');
-        elements.inCallScreen.classList.toggle('hidden', screen !== 'inCall');
-
-        if (screen === 'calling') {
-            startCallingTimer();
-        } else if (screen === 'inCall') {
-            stopCallingTimer();
-            startCallTimer();
-        } else {
-            stopCallingTimer();
-            stopCallTimer();
-        }
-    }
-
-    function formatTime(seconds) {
-        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-        const s = (seconds % 60).toString().padStart(2, '0');
-        return `${m}:${s}`;
-    }
-
-    function startCallingTimer() {
-        state.callingStartTime = Date.now();
-        state.callerTimer = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - state.callingStartTime) / 1000);
-            elements.callingTimer.textContent = formatTime(elapsed);
-        }, 1000);
-    }
-
-    function stopCallingTimer() {
-        if (state.callerTimer) {
-            clearInterval(state.callerTimer);
-            state.callerTimer = null;
-        }
-    }
-
-    function startCallTimer() {
-        state.callStartTime = Date.now();
-        state.callTimer = setInterval(() => {
-            const elapsed = Math.floor((Date.now() - state.callStartTime) / 1000);
-            elements.callTimer.textContent = formatTime(elapsed);
-        }, 1000);
-    }
-
-    function stopCallTimer() {
-        if (state.callTimer) {
-            clearInterval(state.callTimer);
-            state.callTimer = null;
-        }
-    }
-
-    // ============================================================
-    // API呼び出し
-    // ============================================================
-    async function apiCall(method, path, body = null) {
-        const options = {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': CONFIG.API_KEY,
-            },
-        };
-        if (body) options.body = JSON.stringify(body);
-
-        const response = await fetch(`${CONFIG.API_URL}${path}`, options);
-        const data = await response.json();
-
-        if (!response.ok) {
-            throw new Error(data.error?.message || 'APIエラー');
-        }
-        return data;
-    }
-
-    // ============================================================
-    // 呼出処理
-    // ============================================================
-    async function makeCall() {
-        if (state.screen !== 'idle') return;
-
-        try {
-            switchScreen('calling');
-            updateStatus('calling', '呼出中...');
-
-            const result = await apiCall('POST', '/calls/request', {
-                caller_id: CONFIG.CALLER_ID,
-                message: '呼出',
-            });
-
-            state.callId = result.call_id;
-            console.log('Call requested:', result);
-
-        } catch (error) {
-            console.error('Call request failed:', error);
-            alert('呼出に失敗しました: ' + error.message);
-            switchScreen('idle');
-            updateStatus('connected', '接続済み');
-        }
-    }
-
-    function cancelCall() {
-        if (state.callId) {
-            apiCall('POST', `/calls/${state.callId}/end`, { end_reason: 'cancelled' })
-                .catch(console.error);
-        }
-        endCall();
-    }
-
-    function endCall() {
-        if (state.callId && state.screen === 'inCall') {
-            apiCall('POST', `/calls/${state.callId}/end`, { end_reason: 'normal' })
-                .catch(console.error);
-        }
-        state.callId = null;
-        switchScreen('idle');
-        updateStatus('connected', '接続済み');
-    }
-
-    // ============================================================
-    // ユーザー情報読み込み
-    // ============================================================
-    async function loadUserInfo() {
-        try {
-            const user = await apiCall('GET', `/users/${CONFIG.CALLER_ID}`);
-            elements.userName.textContent = user.name;
-            if (user.room_number) {
-                elements.roomNumber.textContent = `${user.room_number}号室`;
-            }
-        } catch (error) {
-            console.log('User info not loaded (API may not be ready)');
-        }
-    }
-
-    // ============================================================
-    // イベントリスナー
-    // ============================================================
-    elements.callButton.addEventListener('click', makeCall);
-    elements.cancelCallButton.addEventListener('click', cancelCall);
-    elements.endCallButton.addEventListener('click', endCall);
-
-    // 初期化
-    loadUserInfo();
-    </script>
+loadBeacons().then(sendHeartbeat);
+</script>
 </body>
 </html>

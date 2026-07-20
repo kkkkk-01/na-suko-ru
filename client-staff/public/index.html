@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>ナースコール - 職員端末</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<style>
+  body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
+  @keyframes flash { 0%,100%{background-color:#fef2f2} 50%{background-color:#fee2e2} }
+  .incoming-flash { animation: flash 1s infinite; }
+</style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+<main class="max-w-md mx-auto p-4">
+
+  <!-- ヘッダー -->
+  <header class="bg-white rounded-2xl shadow p-4 mb-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-lg font-bold text-gray-800"><i class="fas fa-user-nurse text-green-600 mr-2"></i>職員端末</h1>
+      <p class="text-xs text-gray-500">スマホアプリ相当のWeb画面</p>
+    </div>
+    <div id="conn-status" class="text-xs px-3 py-1 rounded-full bg-gray-200 text-gray-600">接続中...</div>
+  </header>
+
+  <!-- 職員選択 -->
+  <section class="bg-white rounded-2xl shadow p-4 mb-4">
+    <label class="text-sm font-semibold text-gray-700 block mb-2">職員を選択</label>
+    <select id="staff-select" class="w-full border rounded-xl p-3 text-lg">
+      <option value="4">山田 看護師</option>
+      <option value="5">高橋 介護士</option>
+      <option value="6">伊藤 介護士</option>
+    </select>
+    <button id="notify-perm" class="mt-2 text-xs text-blue-600 underline">ブラウザ通知を許可する</button>
+  </section>
+
+  <!-- タブ -->
+  <nav class="flex gap-2 mb-4">
+    <button id="tab-waiting" class="tab-btn flex-1 py-2 rounded-xl font-bold bg-green-600 text-white">待機中</button>
+    <button id="tab-alerts" class="tab-btn flex-1 py-2 rounded-xl font-bold bg-white text-gray-600">アラート<span id="alert-badge" class="hidden ml-1 px-2 rounded-full bg-red-500 text-white text-xs">0</span></button>
+    <button id="tab-history" class="tab-btn flex-1 py-2 rounded-xl font-bold bg-white text-gray-600">履歴</button>
+  </nav>
+
+  <!-- 待機画面 -->
+  <section id="panel-waiting" class="bg-white rounded-2xl shadow p-8 text-center">
+    <i class="fas fa-bell-slash text-5xl text-gray-300 mb-3"></i>
+    <p class="text-gray-500">呼出を待機しています</p>
+    <p class="text-xs text-gray-400 mt-2">利用者がボタンを押すとここに着信します</p>
+  </section>
+
+  <!-- アラート一覧 -->
+  <section id="panel-alerts" class="hidden space-y-2"></section>
+
+  <!-- 履歴 -->
+  <section id="panel-history" class="hidden space-y-2"></section>
+
+  <!-- 着信画面（オーバーレイ） -->
+  <div id="screen-incoming" class="hidden fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div class="incoming-flash bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <i class="fas fa-bell fa-shake text-5xl text-red-500 mb-3"></i>
+      <h2 class="text-2xl font-bold text-gray-800 mb-1">ナースコール着信</h2>
+      <p id="incoming-caller" class="text-xl font-bold text-gray-700"></p>
+      <p id="incoming-location" class="text-lg text-orange-600 font-bold mt-1"></p>
+      <p id="incoming-time" class="text-xs text-gray-400 mt-1"></p>
+      <div class="flex gap-3 mt-6">
+        <button id="btn-answer" class="flex-1 py-4 bg-green-500 hover:bg-green-600 text-white rounded-2xl font-bold text-lg"><i class="fas fa-phone mr-1"></i>応答</button>
+        <button id="btn-reject" class="flex-1 py-4 bg-gray-400 text-white rounded-2xl font-bold text-lg">保留</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 通話中画面（オーバーレイ） -->
+  <div id="screen-active" class="hidden fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center">
+      <div class="w-24 h-24 rounded-full bg-green-100 mx-auto flex items-center justify-center mb-3">
+        <i class="fas fa-phone-volume text-3xl text-green-600"></i>
+      </div>
+      <h2 class="text-xl font-bold text-gray-800">通話中</h2>
+      <p id="active-caller" class="text-lg text-gray-700 font-bold"></p>
+      <p id="active-location" class="text-sm text-orange-600 font-semibold"></p>
+      <p id="call-timer" class="text-3xl font-mono text-gray-800 my-3">00:00</p>
+      <button id="btn-end" class="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-lg"><i class="fas fa-phone-slash mr-1"></i>通話を終了</button>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg text-sm z-[60]"></div>
+  <audio id="remote-audio" autoplay></audio>
+</main>
+
+<script>
+const CONFIG = (() => {
+  const p = location.port;
+  const base = (p === '3000' || p === '3002' || p === '3003')
+    ? `${location.protocol}//${location.hostname}:3001` : '';
+  return { API: base + '/api/v1', WS: base || undefined, KEY: 'nursecall_api_key_dev' };
+})();
+const $ = id => document.getElementById(id);
+const state = { staffId: 4, current: null, timer: null, seconds: 0, pc: null, localStream: null };
+
+function toast(msg) { $('toast').textContent = msg; $('toast').classList.remove('hidden'); setTimeout(()=>$('toast').classList.add('hidden'),3000); }
+async function api(path, opts = {}) {
+  const res = await fetch(CONFIG.API + path, { ...opts, headers: { 'Content-Type':'application/json','X-API-Key':CONFIG.KEY, ...(opts.headers||{}) } });
+  if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+  return res.json();
+}
+
+// ---- Socket.IO ----
+const socket = io(CONFIG.WS, { transports: ['websocket','polling'] });
+socket.on('connect', () => {
+  $('conn-status').textContent = 'オンライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-green-100 text-green-700';
+  joinRoom();
+});
+socket.on('disconnect', () => {
+  $('conn-status').textContent = 'オフライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-red-100 text-red-700';
+});
+function joinRoom() { socket.emit('join', { user_id: state.staffId, role: 'staff' }); }
+
+// ---- 着信（位置情報付き = 革命ポイント） ----
+socket.on('call:incoming', (d) => {
+  if (state.current) return; // 通話中は新着を画面に出さない（履歴には残る）
+  state.current = d;
+  $('incoming-caller').textContent = `${d.caller.name}さん`;
+  $('incoming-location').innerHTML = d.location
+    ? `<i class="fas fa-location-dot mr-1"></i>現在【${d.location.name}】付近から呼出`
+    : `${d.caller.room_number || '-'}号室から呼出`;
+  $('incoming-time').textContent = new Date(d.timestamp).toLocaleTimeString('ja-JP');
+  $('screen-incoming').classList.remove('hidden');
+  // ブラウザ通知 + バイブ
+  if (Notification.permission === 'granted') {
+    new Notification('ナースコール着信', { body: `${d.caller.name}さん・${d.location?.name || d.caller.room_number+'号室'}` });
+  }
+  navigator.vibrate?.([300,100,300]);
+  beep();
+});
+
+socket.on('call:escalation', (d) => {
+  toast(`⚠ 無応答エスカレーション: ${d.caller.name}さん（${d.location?.name || ''}）`);
+  loadAlerts();
+  if (!state.current) { state.current = d; socket.listeners('call:incoming')[0]?.(d); }
+});
+socket.on('alert:new', () => loadAlerts());
+socket.on('call:ended', (d) => {
+  if (state.current && d.call_id === state.current.call_id) endCallLocal();
+});
+socket.on('call:answered', (d) => {
+  // 他職員が先に応答した場合は着信画面を閉じる
+  if (state.current && d.call_id === state.current.call_id && $('screen-active').classList.contains('hidden') === true && !$('screen-incoming').classList.contains('hidden')) {
+    // 自分が応答した直後はscreen-activeが表示されているので、それ以外＝他者応答
+  }
+});
+
+// ---- 応答・終了 ----
+$('btn-answer').onclick = async () => {
+  const d = state.current;
+  try {
+    await api(`/calls/${d.call_id}/answer`, { method: 'POST', body: JSON.stringify({ callee_id: state.staffId }) });
+    $('screen-incoming').classList.add('hidden');
+    $('active-caller').textContent = `${d.caller.name}さん`;
+    $('active-location').textContent = d.location ? `${d.location.name}付近` : `${d.caller.room_number||'-'}号室`;
+    $('screen-active').classList.remove('hidden');
+    startTimer();
+    startWebRTC(d);
+  } catch (e) { toast('応答失敗: ' + e.message); state.current = null; $('screen-incoming').classList.add('hidden'); }
+};
+$('btn-reject').onclick = () => { $('screen-incoming').classList.add('hidden'); state.current = null; };
+$('btn-end').onclick = async () => {
+  if (!state.current) return;
+  try { await api(`/calls/${state.current.call_id}/end`, { method:'POST', body: JSON.stringify({ end_reason:'normal' }) }); } catch(e){}
+  endCallLocal();
+};
+function endCallLocal() {
+  closePeer(); clearInterval(state.timer);
+  $('call-timer').textContent = '00:00';
+  $('screen-active').classList.add('hidden');
+  $('screen-incoming').classList.add('hidden');
+  state.current = null;
+  loadHistory();
+}
+function startTimer() {
+  state.seconds = 0;
+  state.timer = setInterval(() => {
+    state.seconds++;
+    $('call-timer').textContent = `${String(Math.floor(state.seconds/60)).padStart(2,'0')}:${String(state.seconds%60).padStart(2,'0')}`;
+  }, 1000);
+}
+
+// ---- WebRTC（発信側: 職員がofferを作る） ----
+async function startWebRTC(d) {
+  try {
+    state.pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    state.pc.onicecandidate = e => { if (e.candidate) socket.emit('webrtc:ice', { to_user_id: d.caller.id, call_id: d.call_id, candidate: e.candidate, from_user_id: state.staffId }); };
+    state.pc.ontrack = e => { $('remote-audio').srcObject = e.streams[0]; };
+    state.localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.localStream.getTracks().forEach(t => state.pc.addTrack(t, state.localStream));
+    const offer = await state.pc.createOffer();
+    await state.pc.setLocalDescription(offer);
+    socket.emit('webrtc:offer', { to_user_id: d.caller.id, call_id: d.call_id, sdp: state.pc.localDescription, from_user_id: state.staffId });
+  } catch (e) { console.warn('WebRTC/mic unavailable:', e.message); toast('マイク未許可のため音声なしで継続'); }
+}
+socket.on('webrtc:answer', async (d) => {
+  if (state.pc && state.current && d.call_id === state.current.call_id) {
+    try { await state.pc.setRemoteDescription(d.sdp); } catch(e){}
+  }
+});
+socket.on('webrtc:ice', async (d) => {
+  if (state.pc && state.current && d.call_id === state.current.call_id) { try { await state.pc.addIceCandidate(d.candidate); } catch(e){} }
+});
+function closePeer() {
+  if (state.pc) { state.pc.close(); state.pc = null; }
+  if (state.localStream) { state.localStream.getTracks().forEach(t=>t.stop()); state.localStream = null; }
+}
+
+// ---- アラート ----
+async function loadAlerts() {
+  try {
+    const { alerts } = await api('/alerts?status=active');
+    const badge = $('alert-badge');
+    if (alerts.length > 0) { badge.textContent = alerts.length; badge.classList.remove('hidden'); }
+    else badge.classList.add('hidden');
+    const icons = { offline:'fa-wifi text-red-500', battery_low:'fa-battery-quarter text-orange-500', unanswered_call:'fa-bell text-red-600', charge_reminder:'fa-plug text-blue-500', system:'fa-gear text-gray-500' };
+    $('panel-alerts').innerHTML = alerts.length === 0
+      ? '<div class="bg-white rounded-2xl shadow p-8 text-center text-gray-400"><i class="fas fa-check-circle text-3xl mb-2 text-green-400"></i><p>アラートはありません</p></div>'
+      : alerts.map(a => `
+        <article class="bg-white rounded-2xl shadow p-4 flex items-start gap-3 ${a.severity==='critical'?'border-l-4 border-red-500':'border-l-4 border-orange-400'}">
+          <i class="fas ${icons[a.type]||'fa-circle-exclamation'} text-xl mt-1"></i>
+          <div class="flex-1">
+            <p class="text-sm font-semibold text-gray-800">${a.message}</p>
+            <p class="text-xs text-gray-400 mt-1">${new Date(a.created_at).toLocaleString('ja-JP')}</p>
+          </div>
+          <button onclick="resolveAlert(${a.id})" class="text-xs px-3 py-1 bg-gray-100 rounded-lg text-gray-600">解決</button>
+        </article>`).join('');
+  } catch(e){ console.error(e); }
+}
+window.resolveAlert = async (id) => { try { await api(`/alerts/${id}/resolve`, { method:'PUT' }); loadAlerts(); } catch(e){ toast(e.message); } };
+
+// ---- 履歴 ----
+async function loadHistory() {
+  try {
+    const { calls } = await api('/calls?per_page=20');
+    const statusJa = { ringing:'呼出中', answered:'通話中', ended:'終了', missed:'不応答', failed:'失敗' };
+    const statusColor = { ringing:'bg-orange-100 text-orange-700', answered:'bg-green-100 text-green-700', ended:'bg-gray-100 text-gray-600', missed:'bg-red-100 text-red-700', failed:'bg-red-100 text-red-700' };
+    $('panel-history').innerHTML = calls.length === 0
+      ? '<div class="bg-white rounded-2xl shadow p-8 text-center text-gray-400">履歴はありません</div>'
+      : calls.map(c => `
+        <article class="bg-white rounded-2xl shadow p-4">
+          <div class="flex justify-between items-center">
+            <p class="font-bold text-gray-800">${c.caller.name}さん</p>
+            <span class="text-xs px-2 py-1 rounded-full ${statusColor[c.status]||''}">${statusJa[c.status]||c.status}</span>
+          </div>
+          <p class="text-sm text-orange-600 font-semibold">${c.location_name ? `<i class="fas fa-location-dot mr-1"></i>${c.location_name}` : (c.caller.room_number||'-')+'号室'}</p>
+          <p class="text-xs text-gray-400 mt-1">${new Date(c.started_at).toLocaleString('ja-JP')} ・ 通話 ${c.duration||0}秒 ・ 応対: ${c.callee?.name||'-'}</p>
+        </article>`).join('');
+  } catch(e){ console.error(e); }
+}
+
+// ---- タブ ----
+const tabs = { 'tab-waiting':'panel-waiting', 'tab-alerts':'panel-alerts', 'tab-history':'panel-history' };
+Object.keys(tabs).forEach(t => $(t).onclick = () => {
+  Object.entries(tabs).forEach(([btn,panel]) => {
+    $(btn).className = 'tab-btn flex-1 py-2 rounded-xl font-bold ' + (btn===t?'bg-green-600 text-white':'bg-white text-gray-600');
+    $(panel).classList.toggle('hidden', btn!==t);
+  });
+  if (t==='tab-history') loadHistory();
+  if (t==='tab-alerts') loadAlerts();
+});
+
+// ---- 通知許可・ビープ ----
+$('notify-perm').onclick = () => Notification.requestPermission().then(p => toast(p==='granted'?'通知を許可しました':'通知は許可されませんでした'));
+function beep() {
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.3;
+    o.start(); o.stop(ctx.currentTime + 0.5);
+  } catch(e){}
+}
+
+$('staff-select').onchange = e => { state.staffId = parseInt(e.target.value); joinRoom(); };
+loadAlerts();
+</script>
+</body>
+</html>

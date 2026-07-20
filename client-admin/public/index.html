@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
+<title>ナースコール - 管理画面</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
+  .avatar-dot { transition: left 1s ease, top 1s ease; }
+  @keyframes ping-call { 75%,100%{transform:scale(2.2);opacity:0} }
+  .calling-ring::after { content:''; position:absolute; inset:-4px; border-radius:9999px; border:3px solid #ef4444; animation:ping-call 1s infinite; }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<header class="bg-slate-800 text-white px-6 py-3 flex items-center justify-between sticky top-0 z-40 shadow">
+  <h1 class="font-bold text-lg"><i class="fas fa-hospital text-orange-400 mr-2"></i>ナースコール管理センター</h1>
+  <div class="flex items-center gap-4 text-sm">
+    <span id="clock" class="font-mono"></span>
+    <span id="conn-status" class="text-xs px-3 py-1 rounded-full bg-slate-600">接続中...</span>
+  </div>
+</header>
+
+<main class="max-w-7xl mx-auto p-4 space-y-4">
+
+  <!-- 統計カード -->
+  <section id="stats-cards" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div class="bg-white rounded-2xl shadow p-4">
+      <p class="text-xs text-gray-500">オンライン端末</p>
+      <p class="text-3xl font-bold text-green-600"><span id="stat-online">-</span><span class="text-base text-gray-400">/<span id="stat-total">-</span></span></p>
+    </div>
+    <div class="bg-white rounded-2xl shadow p-4">
+      <p class="text-xs text-gray-500">本日の呼出</p>
+      <p class="text-3xl font-bold text-blue-600" id="stat-calls-today">-</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow p-4">
+      <p class="text-xs text-gray-500">対応中の呼出</p>
+      <p class="text-3xl font-bold text-orange-500" id="stat-active-calls">-</p>
+    </div>
+    <div class="bg-white rounded-2xl shadow p-4">
+      <p class="text-xs text-gray-500">未解決アラート</p>
+      <p class="text-3xl font-bold text-red-500" id="stat-alerts">-</p>
+    </div>
+  </section>
+
+  <div class="grid lg:grid-cols-3 gap-4">
+
+    <!-- フロアマップ（リアルタイム所在） -->
+    <section class="lg:col-span-2 bg-white rounded-2xl shadow p-4">
+      <h2 class="font-bold text-gray-800 mb-3"><i class="fas fa-map-location-dot text-blue-500 mr-2"></i>リアルタイム所在マップ（1F）</h2>
+      <div id="floor-map" class="relative w-full rounded-xl border-2 border-slate-200 bg-slate-50 overflow-hidden" style="padding-top:52%">
+        <!-- 部屋レイアウト（ビーコン位置に描画） -->
+      </div>
+      <div class="flex flex-wrap gap-4 mt-3 text-xs text-gray-500">
+        <span><span class="inline-block w-3 h-3 rounded-full bg-green-500 mr-1"></span>オンライン</span>
+        <span><span class="inline-block w-3 h-3 rounded-full bg-gray-400 mr-1"></span>オフライン</span>
+        <span><span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1"></span>呼出中</span>
+        <span><i class="fas fa-battery-quarter text-orange-500 mr-1"></i>バッテリー低下</span>
+      </div>
+    </section>
+
+    <!-- アラート -->
+    <section class="bg-white rounded-2xl shadow p-4">
+      <h2 class="font-bold text-gray-800 mb-3 flex items-center justify-between">
+        <span><i class="fas fa-triangle-exclamation text-red-500 mr-2"></i>アラート</span>
+        <span id="alert-count" class="text-xs px-2 py-1 rounded-full bg-red-100 text-red-600">0</span>
+      </h2>
+      <div id="alert-list" class="space-y-2 max-h-[380px] overflow-y-auto"></div>
+    </section>
+  </div>
+
+  <div class="grid lg:grid-cols-2 gap-4">
+    <!-- 端末一覧 -->
+    <section class="bg-white rounded-2xl shadow p-4">
+      <h2 class="font-bold text-gray-800 mb-3"><i class="fas fa-microchip text-purple-500 mr-2"></i>端末監視</h2>
+      <table class="w-full text-sm">
+        <thead><tr class="text-left text-xs text-gray-400 border-b">
+          <th class="py-2">利用者</th><th>現在地</th><th>電池</th><th>状態</th><th>最終通信</th>
+        </tr></thead>
+        <tbody id="device-table"></tbody>
+      </table>
+    </section>
+
+    <!-- 通話履歴 -->
+    <section class="bg-white rounded-2xl shadow p-4">
+      <h2 class="font-bold text-gray-800 mb-3"><i class="fas fa-clock-rotate-left text-blue-500 mr-2"></i>呼出・通話履歴</h2>
+      <div id="call-history" class="space-y-2 max-h-[320px] overflow-y-auto"></div>
+    </section>
+  </div>
+
+</main>
+
+<script>
+const CONFIG = (() => {
+  const p = location.port;
+  const base = (p === '3000' || p === '3002' || p === '3003')
+    ? `${location.protocol}//${location.hostname}:3001` : '';
+  return { API: base + '/api/v1', WS: base || undefined, KEY: 'nursecall_api_key_dev' };
+})();
+const $ = id => document.getElementById(id);
+async function api(path, opts = {}) {
+  const res = await fetch(CONFIG.API + path, { ...opts, headers: { 'Content-Type':'application/json','X-API-Key':CONFIG.KEY, ...(opts.headers||{}) } });
+  if (!res.ok) throw new Error((await res.json()).error?.message || res.statusText);
+  return res.json();
+}
+
+// 時計
+setInterval(() => $('clock').textContent = new Date().toLocaleTimeString('ja-JP'), 1000);
+
+// ---- Socket.IO ----
+const socket = io(CONFIG.WS, { transports: ['websocket','polling'] });
+socket.on('connect', () => {
+  $('conn-status').textContent = 'オンライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-green-500';
+  socket.emit('join', { user_id: 7, role: 'admin' });
+});
+socket.on('disconnect', () => {
+  $('conn-status').textContent = 'オフライン';
+  $('conn-status').className = 'text-xs px-3 py-1 rounded-full bg-red-500';
+});
+socket.on('location:update', () => refreshMap());
+socket.on('alert:new', () => { loadAlerts(); refreshStats(); });
+socket.on('alert:resolved', () => { loadAlerts(); refreshStats(); });
+socket.on('notification:new', () => { refreshAll(); });
+socket.on('call:answered', () => refreshAll());
+socket.on('call:ended', () => refreshAll());
+
+// ---- フロアマップ ----
+let beacons = [], presence = [], activeCalls = new Set();
+const areaColors = { room:'bg-blue-100 border-blue-300', toilet:'bg-amber-100 border-amber-300', bath:'bg-cyan-100 border-cyan-300', dining:'bg-green-100 border-green-300', common:'bg-purple-100 border-purple-300', corridor:'bg-gray-100 border-gray-300', entrance:'bg-rose-100 border-rose-300' };
+const areaIcons = { room:'fa-bed', toilet:'fa-restroom', bath:'fa-bath', dining:'fa-utensils', common:'fa-couch', corridor:'fa-road', entrance:'fa-door-open' };
+
+function renderMap() {
+  const map = $('floor-map');
+  map.querySelectorAll('.zone,.avatar-dot').forEach(e => e.remove());
+  // ゾーン描画
+  beacons.forEach(b => {
+    const z = document.createElement('div');
+    z.className = `zone absolute rounded-xl border-2 ${areaColors[b.area_type]||'bg-gray-100 border-gray-300'} flex flex-col items-center justify-start pt-1 text-[10px] md:text-xs text-gray-600 font-semibold`;
+    z.style.cssText = `left:${b.map_x - 9}%;top:${b.map_y - 16}%;width:18%;height:32%`;
+    z.innerHTML = `<span><i class="fas ${areaIcons[b.area_type]||'fa-location-dot'} mr-1"></i>${b.name}</span>`;
+    map.appendChild(z);
+  });
+  // 利用者ドット
+  presence.forEach((p, i) => {
+    const b = beacons.find(x => x.beacon_id === p.current_beacon_id);
+    const dot = document.createElement('div');
+    const calling = activeCalls.has(p.user_id);
+    const color = calling ? 'bg-red-500' : (p.is_online ? 'bg-green-500' : 'bg-gray-400');
+    dot.className = `avatar-dot absolute z-10 ${calling?'calling-ring':''}`;
+    const x = b ? parseFloat(b.map_x) + (i % 3 - 1) * 4 : 50;
+    const y = b ? parseFloat(b.map_y) + 4 : 50;
+    dot.style.cssText = `left:${x}%;top:${y}%;transform:translate(-50%,-50%)`;
+    dot.innerHTML = `
+      <div class="relative flex flex-col items-center">
+        <div class="w-7 h-7 md:w-9 md:h-9 rounded-full ${color} text-white flex items-center justify-center shadow-lg border-2 border-white relative">
+          <i class="fas fa-user text-xs md:text-sm"></i>
+          ${p.battery_level <= 20 ? '<i class="fas fa-battery-quarter text-orange-300 absolute -top-2 -right-2 text-[10px]"></i>' : ''}
+        </div>
+        <span class="text-[9px] md:text-[10px] font-bold bg-white/90 rounded px-1 shadow mt-0.5">${p.name.split(' ')[0]}</span>
+      </div>`;
+    dot.title = `${p.name} - ${p.location_name || '不明'} (電池${p.battery_level}%)`;
+    map.appendChild(dot);
+  });
+}
+async function refreshMap() {
+  try {
+    const [bRes, pRes] = await Promise.all([api('/beacons'), api('/locations/presence')]);
+    beacons = bRes.beacons; presence = pRes.presence;
+    renderMap();
+    renderDevices();
+  } catch(e){ console.error(e); }
+}
+
+// ---- 端末一覧 ----
+function renderDevices() {
+  $('device-table').innerHTML = presence.map(p => {
+    const batColor = p.battery_level <= 20 ? 'text-red-500' : p.battery_level <= 50 ? 'text-orange-500' : 'text-green-600';
+    const last = p.last_heartbeat ? new Date(p.last_heartbeat).toLocaleTimeString('ja-JP') : '-';
+    return `<tr class="border-b last:border-0">
+      <td class="py-2 font-semibold">${p.name}</td>
+      <td>${p.location_name || '<span class="text-gray-400">不明</span>'}</td>
+      <td class="${batColor} font-mono">${p.battery_level ?? '-'}%</td>
+      <td>${p.is_online ? '<span class="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700">オンライン</span>' : '<span class="text-xs px-2 py-0.5 rounded-full bg-gray-200 text-gray-500">オフライン</span>'}</td>
+      <td class="text-xs text-gray-400 font-mono">${last}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---- アラート ----
+async function loadAlerts() {
+  try {
+    const { alerts } = await api('/alerts?status=active');
+    $('alert-count').textContent = alerts.length;
+    $('stat-alerts').textContent = alerts.length;
+    const icons = { offline:'fa-wifi text-red-500', battery_low:'fa-battery-quarter text-orange-500', unanswered_call:'fa-bell text-red-600', charge_reminder:'fa-plug text-blue-500', system:'fa-gear text-gray-500' };
+    $('alert-list').innerHTML = alerts.length === 0
+      ? '<p class="text-center text-gray-400 py-8"><i class="fas fa-check-circle text-2xl text-green-400 block mb-2"></i>アラートなし</p>'
+      : alerts.map(a => `
+        <div class="p-3 rounded-xl ${a.severity==='critical'?'bg-red-50 border border-red-200':'bg-orange-50 border border-orange-200'}">
+          <div class="flex items-start gap-2">
+            <i class="fas ${icons[a.type]||'fa-circle-exclamation'} mt-0.5"></i>
+            <div class="flex-1">
+              <p class="text-xs font-semibold text-gray-800">${a.message}</p>
+              <p class="text-[10px] text-gray-400 mt-1">${new Date(a.created_at).toLocaleString('ja-JP')}</p>
+            </div>
+            <button onclick="resolveAlert(${a.id})" class="text-[10px] px-2 py-1 bg-white rounded-lg border text-gray-500 hover:bg-gray-50">解決</button>
+          </div>
+        </div>`).join('');
+  } catch(e){ console.error(e); }
+}
+window.resolveAlert = async id => { try { await api(`/alerts/${id}/resolve`, { method:'PUT' }); loadAlerts(); } catch(e){} };
+
+// ---- 履歴 ----
+async function loadHistory() {
+  try {
+    const { calls } = await api('/calls?per_page=15');
+    activeCalls = new Set(calls.filter(c => c.status==='ringing'||c.status==='answered').map(c => c.caller.id));
+    const statusJa = { ringing:'🔔 呼出中', answered:'📞 通話中', ended:'✅ 終了', missed:'⚠ 不応答', failed:'❌ 失敗' };
+    $('call-history').innerHTML = calls.length === 0
+      ? '<p class="text-center text-gray-400 py-8">履歴なし</p>'
+      : calls.map(c => `
+        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 border">
+          <div>
+            <p class="text-sm font-bold">${c.caller.name} <span class="text-orange-600 font-semibold text-xs">${c.location_name ? '@'+c.location_name : '('+(c.caller.room_number||'-')+'号室)'}</span></p>
+            <p class="text-[10px] text-gray-400">${new Date(c.started_at).toLocaleString('ja-JP')} ・ ${c.duration||0}秒 ・ ${c.callee?.name||'-'}</p>
+          </div>
+          <span class="text-xs">${statusJa[c.status]||c.status}</span>
+        </div>`).join('');
+    $('stat-active-calls').textContent = activeCalls.size;
+  } catch(e){ console.error(e); }
+}
+
+// ---- 統計 ----
+async function refreshStats() {
+  try {
+    const p = presence;
+    $('stat-online').textContent = p.filter(x => x.is_online).length;
+    $('stat-total').textContent = p.length;
+    const { calls } = await api('/calls?per_page=100');
+    const today = new Date().toDateString();
+    $('stat-calls-today').textContent = calls.filter(c => new Date(c.started_at).toDateString() === today).length;
+  } catch(e){ console.error(e); }
+}
+
+async function refreshAll() {
+  await refreshMap();
+  await Promise.all([loadAlerts(), loadHistory(), refreshStats()]);
+  renderMap(); // activeCalls反映
+}
+refreshAll();
+setInterval(refreshAll, 15000);
+</script>
+</body>
+</html>
