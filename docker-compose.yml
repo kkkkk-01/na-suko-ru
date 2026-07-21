@@ -90,6 +90,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+      start_period: 20s
+    labels:
+      autoheal: "true"   # 応答不能になったら autoheal が自動再起動
     networks:
       - nursecall-net
 
@@ -157,6 +160,24 @@ services:
       - client-admin
       - client-user
       - client-staff
+    networks:
+      - nursecall-net
+
+  # ============================================================
+  # Autoheal - ヘルスチェック自動復旧
+  # 「プロセスは生きているが応答しない」状態（unhealthy）を
+  # 検知して自動再起動する番人コンテナ
+  # ============================================================
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: nursecall-autoheal
+    restart: unless-stopped
+    environment:
+      AUTOHEAL_CONTAINER_LABEL: autoheal
+      AUTOHEAL_INTERVAL: 10        # 10秒ごとに監視
+      AUTOHEAL_START_PERIOD: 30    # 起動直後30秒は猟予
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - nursecall-net
 

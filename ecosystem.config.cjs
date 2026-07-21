@@ -17,6 +17,12 @@ module.exports = {
       watch: false,
       instances: 1,
       exec_mode: 'fork',
+      // --- 落ちにくさ強化 ---
+      autorestart: true,          // クラッシュ時に自動再起動
+      max_memory_restart: '300M', // メモリリーク時のセーフティ（通常80MB前後）
+      min_uptime: '10s',          // 10秒未満での連続クラッシュを異常と判定
+      max_restarts: 50,           // 異常クラッシュループの上限
+      restart_delay: 2000,        // 再起動間隔2秒（DB復帰待ちの猶予）
     },
   ],
 };

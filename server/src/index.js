@@ -280,12 +280,21 @@ process.on('SIGTERM', () => {
   });
 });
 
+// ============================================================
+// 障害時ポリシー: 「不明な状態で生き続けない」
+// 予期しない例外 = プロセスの内部状態が保証できない状態。
+// ログを残して即終了し、Docker/PM2 の restart 機構に数秒で
+// 再起動させる（クラッシュオンリー設計・業界標準）。
+// ============================================================
 process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
+  logger.error('Uncaught Exception (restarting process):', error);
+  // ログをフラッシュする猶予を与えてから終了 → supervisor が自動再起動
+  setTimeout(() => process.exit(1), 500);
 });
 
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled Rejection:', reason);
+  logger.error('Unhandled Rejection (restarting process):', reason);
+  setTimeout(() => process.exit(1), 500);
 });
 
 module.exports = { app, server, io };
