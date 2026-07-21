@@ -75,6 +75,55 @@ class NotificationService {
     }
   }
 
+  // 職員全員へのPush一斉送信（ポケットの中のスマホを鳴らす）
+  async sendPushToAllStaff(title, body, data = {}) {
+    try {
+      const result = await query(
+        `SELECT d.device_token FROM devices d
+         JOIN users u ON u.id = d.user_id
+         WHERE u.role = 'staff' AND u.is_active = true AND d.device_token IS NOT NULL`
+      );
+      const tokens = [...new Set(result.rows.map(r => r.device_token).filter(Boolean))];
+
+      if (!this.firebaseApp || tokens.length === 0) {
+        logger.info(`[SIMULATED] Push to all staff (${tokens.length} tokens): ${title} - ${body}`);
+        return { success: true, simulated: true, tokens: tokens.length };
+      }
+
+      const admin = require('firebase-admin');
+      const response = await admin.messaging().sendEachForMulticast({
+        notification: { title, body },
+        data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
+        tokens,
+        webpush: {
+          notification: {
+            title, body,
+            icon: '/staff/icon-192.png',
+            badge: '/staff/icon-192.png',
+            vibrate: [200, 100, 200, 100, 200],
+            requireInteraction: true, // タップするまで消えない
+            tag: `nursecall-${data.call_id || Date.now()}`,
+          },
+          fcmOptions: { link: '/staff/' },
+        },
+      });
+      logger.info(`FCM staff broadcast: ${response.successCount} ok / ${response.failureCount} fail (${tokens.length} tokens)`);
+
+      // 無効トークンの自動掃除
+      response.responses.forEach((r, i) => {
+        if (!r.success && /not-found|invalid-registration|unregistered/i.test(r.error?.code || '')) {
+          query('UPDATE devices SET device_token = NULL WHERE device_token = $1', [tokens[i]])
+            .catch(() => {});
+        }
+      });
+
+      return { success: true, successCount: response.successCount, failureCount: response.failureCount };
+    } catch (error) {
+      logger.error('Staff push broadcast error:', error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
   // WebSocket通知（リアルタイム）
   sendWebSocketNotification(event, data, room = null) {
     if (room) {
@@ -110,14 +159,15 @@ class NotificationService {
     );
     const notification = notifResult.rows[0];
 
-    // Push通知
-    const pushResult = await this.sendPushNotification(calleeId, title, body, {
+    // Push通知：担当職員 + 職員全員に一斉（画面ロック中のスマホも鳴る）
+    const pushData = {
       type: 'call_request',
       call_id: String(callId),
       caller_id: String(callerId),
       caller_name: caller.name,
       caller_room: caller.room_number || '',
-    });
+    };
+    const pushResult = await this.sendPushToAllStaff(title, body, pushData);
 
     // 着信ペイロード（位置情報付き）
     const incomingPayload = {
@@ -171,6 +221,13 @@ class NotificationService {
             [payload.caller.id, callId,
              `${payload.caller.name}さんの呼出（${payload.location?.name || payload.caller.room_number + '号室'}）に${delayMs / 1000}秒間応答がありません`]
           );
+
+          // エスカレーションはPushでも全職員に再通知（確実に気づかせる）
+          this.sendPushToAllStaff(
+            '⚠️ 呼出未応答エスカレーション',
+            alert.rows[0].message,
+            { type: 'escalation', call_id: String(callId) }
+          ).catch(() => {});
 
           // 全職員 + 管理者にエスカレーション通知
           this.sendWebSocketNotification('call:escalation', {

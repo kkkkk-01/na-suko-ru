@@ -21,6 +21,7 @@ const dashboardRouter = require('./routes/dashboard');
 const beaconsRouter = require('./routes/beacons');
 const locationsRouter = require('./routes/locations');
 const alertsRouter = require('./routes/alerts');
+const pushRouter = require('./routes/push');
 
 const app = express();
 const server = http.createServer(app);
@@ -39,6 +40,7 @@ const io = new SocketIOServer(server, {
 const notificationService = new NotificationService(io);
 app.locals.io = io;
 app.locals.notificationService = notificationService;
+app.set('notificationService', notificationService);
 
 // ============================================================
 // ミドルウェア
@@ -84,6 +86,7 @@ app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/beacons', beaconsRouter);
 app.use('/api/v1/locations', locationsRouter);
 app.use('/api/v1/alerts', alertsRouter);
+app.use('/api/v1/push', pushRouter);
 
 // ============================================================
 // 静的UI配信（単一サーバーで全画面を提供。Dockerではnginxが同等の役割）

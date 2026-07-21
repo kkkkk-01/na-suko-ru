@@ -112,6 +112,15 @@ docker exec -i nursecall-db psql -U nursecall -d nursecall < server/seeds/seed_b
 > 既にDBボリュームがある場合（アップデート時）は追加マイグレーションを手動適用:
 > `docker exec -i nursecall-db psql -U nursecall -d nursecall < server/migrations/002_location_and_alerts.sql`
 
+## プッシュ通知（Firebase / FCM）
+
+職員スマホが**画面ロック中・ポケットの中でも着信**するプッシュ通知に対応。
+
+- 未設定でも全機能正常動作（プッシュだけシミュレーションログ出力）
+- 設定手順（無料・約15分）: **[docs/FIREBASE_SETUP.md](docs/FIREBASE_SETUP.md)**
+- 有効化すると: 呼出→**全職員のスマホに一斉プッシュ** / 30秒無応答エスカレーションも再プッシュ
+- 職員は `/staff/` 画面の「プッシュ通知 → 有効化」をタップするだけ（HTTPS環境=トンネルURL経由が必要）
+
 ## 外部公開URL（Cloudflare Tunnel）
 
 ルーター設定・ポート開放不要で、施設外（デモ相手・外出中の職員）からアクセスできる公開URLを発行できます。

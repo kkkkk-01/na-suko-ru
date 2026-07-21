@@ -35,6 +35,17 @@
       <option value="6">伊藤 介護士</option>
     </select>
     <button id="notify-perm" class="mt-2 text-xs text-blue-600 underline">ブラウザ通知を許可する</button>
+    <!-- FCMプッシュ通知（画面ロック中も着信） -->
+    <div id="fcm-section" class="hidden mt-3 p-3 rounded-xl bg-blue-50 border border-blue-200">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-bold text-blue-800"><i class="fas fa-mobile-screen-button mr-1"></i>プッシュ通知</p>
+          <p id="fcm-status" class="text-xs text-blue-600">画面ロック中でも着信できます</p>
+        </div>
+        <button id="fcm-enable" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold">有効化</button>
+      </div>
+      <button id="fcm-test" class="hidden mt-2 text-xs text-blue-600 underline">テスト通知を送る</button>
+    </div>
   </section>
 
   <!-- タブ -->
@@ -271,6 +282,74 @@ Object.keys(tabs).forEach(t => $(t).onclick = () => {
 
 // ---- 通知許可・ビープ ----
 $('notify-perm').onclick = () => Notification.requestPermission().then(p => toast(p==='granted'?'通知を許可しました':'通知は許可されませんでした'));
+
+// ---- FCMプッシュ通知（画面ロック中も着信） ----
+const fcm = { app: null, messaging: null, vapidKey: null, token: null };
+
+async function fcmInit() {
+  try {
+    const res = await api('/push/config');
+    if (!res.enabled) return; // Firebase未設定→セクション非表示のまま
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+
+    // Firebase SDKを動的ロード（未設定環境での無駄な読み込みを回避）
+    await Promise.all([
+      loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'),
+      loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js'),
+    ]);
+    fcm.app = firebase.initializeApp(res.config);
+    fcm.messaging = firebase.messaging();
+    fcm.vapidKey = res.vapidKey;
+
+    $('fcm-section').classList.remove('hidden');
+
+    // 既に許可済みなら自動でトークン登録
+    if (Notification.permission === 'granted') fcmEnable(true);
+  } catch (e) { console.warn('FCM init skipped:', e.message); }
+}
+
+function loadScript(src) {
+  return new Promise((ok, ng) => {
+    if (document.querySelector(`script[src="${src}"]`)) return ok();
+    const s = document.createElement('script');
+    s.src = src; s.onload = ok; s.onerror = ng;
+    document.head.appendChild(s);
+  });
+}
+
+async function fcmEnable(silent = false) {
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { if (!silent) toast('通知が許可されませんでした'); return; }
+
+    const reg = await navigator.serviceWorker.register('/staff/firebase-messaging-sw.js', { scope: '/staff/' });
+    await navigator.serviceWorker.ready;
+
+    fcm.token = await fcm.messaging.getToken({ vapidKey: fcm.vapidKey, serviceWorkerRegistration: reg });
+    if (!fcm.token) { if (!silent) toast('トークン取得に失敗しました'); return; }
+
+    await api('/push/register', { method: 'POST', body: JSON.stringify({ user_id: state.staffId, token: fcm.token }) });
+
+    $('fcm-status').textContent = '✅ 有効（画面ロック中も着信します）';
+    $('fcm-enable').textContent = '有効済み';
+    $('fcm-enable').className = 'px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold';
+    $('fcm-test').classList.remove('hidden');
+    if (!silent) toast('プッシュ通知を有効化しました');
+
+    // フォアグラウンド受信（画面表示中はSocket.IOが主役なのでログのみ）
+    fcm.messaging.onMessage((p) => console.log('FCM foreground:', p.notification?.title));
+  } catch (e) {
+    console.error('FCM enable failed:', e);
+    if (!silent) toast('プッシュ通知の有効化に失敗: ' + e.message);
+  }
+}
+
+$('fcm-enable').onclick = () => fcmEnable(false);
+$('fcm-test').onclick = async () => {
+  try { await api('/push/test', { method: 'POST', body: JSON.stringify({ user_id: state.staffId }) }); toast('テスト通知を送信しました（画面をロックして確認できます）'); }
+  catch (e) { toast('送信失敗: ' + e.message); }
+};
+fcmInit();
 function beep() {
   try {
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
@@ -281,7 +360,11 @@ function beep() {
   } catch(e){}
 }
 
-$('staff-select').onchange = e => { state.staffId = parseInt(e.target.value); joinRoom(); };
+$('staff-select').onchange = e => {
+  state.staffId = parseInt(e.target.value); joinRoom();
+  // 職員切替時はトークンを新しい職員に登録し直す
+  if (fcm.token) api('/push/register', { method: 'POST', body: JSON.stringify({ user_id: state.staffId, token: fcm.token }) }).catch(()=>{});
+};
 loadAlerts();
 </script>
 </body>
