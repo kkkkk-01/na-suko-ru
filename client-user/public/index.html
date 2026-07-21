@@ -40,11 +40,40 @@
 
   <!-- ビーコンシミュレーター（現在地） -->
   <section class="bg-white rounded-2xl shadow p-4 mb-4">
-    <label class="text-sm font-semibold text-gray-700 block mb-1">
-      <i class="fas fa-location-dot text-blue-500 mr-1"></i>現在地（BLEビーコンシミュレーター）
-    </label>
-    <p class="text-xs text-gray-400 mb-2">実機ではESP32が最寄りビーコンを自動検知します</p>
-    <div id="beacon-grid" class="grid grid-cols-2 gap-2"></div>
+    <div class="flex items-center justify-between mb-2">
+      <label class="text-sm font-semibold text-gray-700">
+        <i class="fas fa-location-dot text-blue-500 mr-1"></i>現在地（BLE位置検知）
+      </label>
+      <div class="flex rounded-lg overflow-hidden border text-xs">
+        <button id="mode-manual" class="px-3 py-1.5 bg-blue-500 text-white font-bold">手動選択</button>
+        <button id="mode-rf" class="px-3 py-1.5 bg-white text-gray-600 font-bold">リアル電波</button>
+      </div>
+    </div>
+
+    <!-- 手動モード -->
+    <div id="manual-panel">
+      <p class="text-xs text-gray-400 mb-2">デモ用: ビーコンを直接選択します</p>
+      <div id="beacon-grid" class="grid grid-cols-2 gap-2"></div>
+    </div>
+
+    <!-- リアル電波モード -->
+    <div id="rf-panel" class="hidden">
+      <p class="text-xs text-gray-400 mb-2">実機検証用: マップ上で人をドラッグすると、距離・壁・揺らぎを含む電波モデルでRSSIを計算し、<b>ESP32と同一の判定ロジック</b>（移動平均+ヒステリシス）で現在地を自動判定します</p>
+      <div id="rf-map" class="relative w-full rounded-xl border-2 border-slate-300 bg-slate-50 overflow-hidden select-none" style="padding-top:56%">
+        <!-- ゾーン・ビーコン・人は JS で描画 -->
+      </div>
+      <div class="mt-2 flex items-center justify-between">
+        <p class="text-xs"><span class="text-gray-500">判定中の現在地:</span> <span id="rf-decision" class="font-bold text-blue-600">-</span></p>
+        <p class="text-[10px] text-gray-400">スキャン間隔: 2秒（実機は15秒）</p>
+      </div>
+      <details class="mt-2">
+        <summary class="text-xs text-gray-500 cursor-pointer"><i class="fas fa-wave-square mr-1"></i>RSSIモニター（生電波 vs 判定）</summary>
+        <table class="w-full text-[11px] mt-2">
+          <thead><tr class="text-left text-gray-400 border-b"><th class="py-1">ビーコン</th><th>生RSSI</th><th>移動平均</th><th>判定</th></tr></thead>
+          <tbody id="rssi-table"></tbody>
+        </table>
+      </details>
+    </div>
   </section>
 
   <!-- バッテリーシミュレーター -->
@@ -171,9 +200,11 @@ function closePeer() {
 }
 
 // ---- ビーコン ----
+let beaconList = [];
 async function loadBeacons() {
   try {
     const { beacons } = await api('/beacons');
+    beaconList = beacons;
     const icons = { room:'fa-bed', toilet:'fa-restroom', bath:'fa-bath', dining:'fa-utensils', common:'fa-couch', corridor:'fa-road', entrance:'fa-door-open' };
     $('beacon-grid').innerHTML = beacons.map(b => `
       <button data-beacon="${b.beacon_id}" class="beacon-btn border-2 rounded-xl p-2 text-sm text-left ${b.beacon_id===state.beaconId?'border-blue-500 bg-blue-50':'border-gray-200'}">
@@ -185,15 +216,179 @@ async function loadBeacons() {
       btn.className = btn.className.replace('border-gray-200','border-blue-500 bg-blue-50');
       sendHeartbeat();
     });
+    rf.init();
   } catch (e) { console.error(e); }
 }
+
+// ============================================================
+// リアル電波シミュレーションエンジン
+// ESP32ファームウェア仕様書 §3 と同一の判定ロジックを実装:
+//  - パスロスモデル: RSSI = TxPower - 10·n·log10(d) - 壁減衰
+//  - フェージング: ±6dBのランダム揺らぎ
+//  - 判定: 直近3スキャンの移動平均が最大のビーコン
+//  - ヒステリシス: 現在地変更は +6dB 以上強い場合のみ
+// ============================================================
+const rf = {
+  active: false,
+  pos: { x: 15, y: 30 },          // 人の位置(%)
+  MAP_W: 20, MAP_H: 11,           // マップ実寸(m) → 1%≈数十cm
+  TX_POWER: -40,                  // 1m地点RSSI
+  PATH_N: 2.8,                    // 屋内減衰係数
+  WALL_DB: 8,                     // 壁1枚あたりの減衰
+  FADE_DB: 6,                     // 揺らぎ幅
+  HYST_DB: 6,                     // ヒステリシス閾値
+  AVG_N: 3,                       // 移動平均サンプル数
+  RX_FLOOR: -90,                  // 受信限界
+  history: {},                    // beacon_id -> [rssi,...]
+  decided: null,
+  timer: null,
+
+  // 壁判定: ゾーン(部屋)矩形をまたぐごとに壁1枚とカウント（簡易モデル）
+  zoneOf(x, y) {
+    const b = beaconList.find(bb => {
+      const bx = parseFloat(bb.map_x), by = parseFloat(bb.map_y);
+      return Math.abs(x - bx) <= 9 && Math.abs(y - by) <= 16;
+    });
+    return b ? b.beacon_id : null;
+  },
+  wallsBetween(x1, y1, x2, y2) {
+    const z1 = this.zoneOf(x1, y1), z2 = this.zoneOf(x2, y2);
+    if (z1 === z2) return 0;
+    if (z1 === null || z2 === null) return 1;   // 廊下↔部屋 = 壁1枚
+    return 2;                                    // 部屋↔別部屋 = 壁2枚
+  },
+
+  rssiFrom(b) {
+    const dx = (this.pos.x - parseFloat(b.map_x)) / 100 * this.MAP_W;
+    const dy = (this.pos.y - parseFloat(b.map_y)) / 100 * this.MAP_H;
+    const d = Math.max(0.3, Math.hypot(dx, dy));
+    const walls = this.wallsBetween(this.pos.x, this.pos.y, parseFloat(b.map_x), parseFloat(b.map_y));
+    const fade = (Math.random() * 2 - 1) * this.FADE_DB;
+    const rssi = this.TX_POWER - 10 * this.PATH_N * Math.log10(d) - walls * this.WALL_DB + fade;
+    return Math.round(Math.max(this.RX_FLOOR - 10, rssi));
+  },
+
+  scan() {
+    const rows = [];
+    let bestId = null, bestAvg = -999;
+    beaconList.forEach(b => {
+      const raw = this.rssiFrom(b);
+      const detected = raw >= this.RX_FLOOR;   // 受信限界以下はスキャンに載らない
+      const h = this.history[b.beacon_id] = this.history[b.beacon_id] || [];
+      if (detected) { h.push(raw); if (h.length > this.AVG_N) h.shift(); }
+      const avg = h.length ? h.reduce((a, c) => a + c, 0) / h.length : null;
+      if (avg !== null && avg > bestAvg) { bestAvg = avg; bestId = b.beacon_id; }
+      rows.push({ b, raw: detected ? raw : null, avg });
+    });
+
+    // ヒステリシス: 現在地より +HYST_DB 強いときだけ切替（ESP32と同一）
+    if (this.decided === null) {
+      this.decided = bestId;
+    } else if (bestId !== this.decided) {
+      const curAvg = (this.history[this.decided] || []).length
+        ? this.history[this.decided].reduce((a, c) => a + c, 0) / this.history[this.decided].length
+        : -999;
+      if (bestAvg >= curAvg + this.HYST_DB) this.decided = bestId;
+    }
+
+    // 判定結果を端末の現在地に反映
+    if (this.decided && this.decided !== state.beaconId) {
+      state.beaconId = this.decided;
+      sendHeartbeat();
+    }
+
+    // UI更新
+    const dec = beaconList.find(b => b.beacon_id === this.decided);
+    $('rf-decision').textContent = dec ? `${dec.name} (平均 ${Math.round(bestAvg)}dBm)` : '判定中...';
+    $('rssi-table').innerHTML = rows
+      .sort((a, c) => (c.avg ?? -999) - (a.avg ?? -999))
+      .map(r => `<tr class="border-b last:border-0 ${r.b.beacon_id === this.decided ? 'bg-blue-50 font-bold' : ''}">
+        <td class="py-0.5">${r.b.name}</td>
+        <td class="font-mono">${r.raw !== null ? r.raw + 'dBm' : '<span class=\'text-gray-300\'>圣外</span>'}</td>
+        <td class="font-mono">${r.avg !== null ? Math.round(r.avg) + 'dBm' : '-'}</td>
+        <td>${r.b.beacon_id === this.decided ? '<i class=\'fas fa-location-dot text-blue-500\'></i> 現在地' : ''}</td>
+      </tr>`).join('');
+    this.renderPerson();
+  },
+
+  init() {
+    if (!beaconList.length) return;
+    const map = $('rf-map');
+    const areaColors = { room:'bg-blue-100 border-blue-300', toilet:'bg-amber-100 border-amber-300', bath:'bg-cyan-100 border-cyan-300', dining:'bg-green-100 border-green-300', common:'bg-purple-100 border-purple-300', entrance:'bg-rose-100 border-rose-300' };
+    map.querySelectorAll('.rf-zone,.rf-beacon,#rf-person').forEach(e => e.remove());
+    beaconList.forEach(b => {
+      const z = document.createElement('div');
+      z.className = `rf-zone absolute rounded-lg border ${areaColors[b.area_type]||'bg-gray-100 border-gray-300'} text-[9px] text-gray-500 font-semibold pl-1`;
+      z.style.cssText = `left:${b.map_x - 9}%;top:${b.map_y - 16}%;width:18%;height:32%`;
+      z.textContent = b.name;
+      map.appendChild(z);
+      const dot = document.createElement('div');
+      dot.className = 'rf-beacon absolute w-2.5 h-2.5 rounded-full bg-indigo-500 border-2 border-white shadow';
+      dot.style.cssText = `left:${b.map_x}%;top:${b.map_y}%;transform:translate(-50%,-50%)`;
+      dot.title = b.beacon_id;
+      map.appendChild(dot);
+    });
+    const person = document.createElement('div');
+    person.id = 'rf-person';
+    person.className = 'absolute z-10 w-8 h-8 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-lg border-2 border-white cursor-grab active:cursor-grabbing';
+    person.innerHTML = '<i class="fas fa-person text-sm pointer-events-none"></i>';
+    map.appendChild(person);
+    this.renderPerson();
+
+    // ドラッグ（マウス/タッチ共通）
+    const move = (cx, cy) => {
+      const r = map.getBoundingClientRect();
+      this.pos.x = Math.min(98, Math.max(2, (cx - r.left) / r.width * 100));
+      this.pos.y = Math.min(96, Math.max(4, (cy - r.top) / r.height * 100));
+      this.renderPerson();
+    };
+    let dragging = false;
+    person.addEventListener('pointerdown', e => { dragging = true; person.setPointerCapture(e.pointerId); });
+    person.addEventListener('pointermove', e => { if (dragging) move(e.clientX, e.clientY); });
+    person.addEventListener('pointerup', () => dragging = false);
+    map.addEventListener('pointerdown', e => { if (e.target === map || e.target.classList.contains('rf-zone')) move(e.clientX, e.clientY); });
+  },
+
+  renderPerson() {
+    const p = document.getElementById('rf-person');
+    if (p) { p.style.left = this.pos.x + '%'; p.style.top = this.pos.y + '%'; p.style.transform = 'translate(-50%,-50%)'; }
+  },
+
+  start() {
+    this.active = true;
+    this.history = {}; this.decided = null;
+    this.timer = setInterval(() => this.scan(), 2000);
+    this.scan();
+  },
+  stop() {
+    this.active = false;
+    clearInterval(this.timer);
+  },
+};
+
+// モード切替
+function setMode(mode) {
+  const rfOn = mode === 'rf';
+  $('manual-panel').classList.toggle('hidden', rfOn);
+  $('rf-panel').classList.toggle('hidden', !rfOn);
+  $('mode-manual').className = `px-3 py-1.5 font-bold ${!rfOn ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}`;
+  $('mode-rf').className = `px-3 py-1.5 font-bold ${rfOn ? 'bg-blue-500 text-white' : 'bg-white text-gray-600'}`;
+  if (rfOn) { rf.init(); rf.start(); } else rf.stop();
+}
+$('mode-manual').onclick = () => setMode('manual');
+$('mode-rf').onclick = () => setMode('rf');
 
 // ---- ハートビート（30秒間隔、ESP32実機と同一仕様） ----
 async function sendHeartbeat() {
   try {
+    let rssi = -45 - Math.floor(Math.random() * 25);
+    if (rf.active && state.beaconId) {
+      const h = rf.history[state.beaconId] || [];
+      if (h.length) rssi = Math.round(h.reduce((a,c)=>a+c,0)/h.length);
+    }
     await api('/locations/heartbeat', { method: 'POST', body: JSON.stringify({
       user_id: state.userId, beacon_id: state.beaconId,
-      rssi: -45 - Math.floor(Math.random() * 25), battery_level: state.battery,
+      rssi, battery_level: state.battery,
     })});
   } catch (e) { console.warn('heartbeat failed', e.message); }
 }
@@ -202,9 +397,12 @@ setInterval(sendHeartbeat, 30000);
 // ---- 呼出 ----
 $('call-button').onclick = async () => {
   try {
+    // リアル電波モード中は判定済みビーコンの実測平均RSSIを送信（ESP32と同じ振舞い）
+    const avgOf = id => { const h = rf.history[id] || []; return h.length ? Math.round(h.reduce((a,c)=>a+c,0)/h.length) : null; };
+    const rssi = rf.active ? (avgOf(state.beaconId) ?? -60) : -45 - Math.floor(Math.random() * 25);
     const r = await api('/calls/request', { method: 'POST', body: JSON.stringify({
       caller_id: state.userId, beacon_id: state.beaconId,
-      rssi: -45 - Math.floor(Math.random() * 25),
+      rssi,
     })});
     state.callId = r.call_id;
     show('screen-calling');
