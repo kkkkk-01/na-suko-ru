@@ -21,7 +21,10 @@
 const API_BASE = process.env.API_BASE || 'http://localhost:3000/api/v1';
 const API_KEY = process.env.API_KEY || 'nursecall_api_key_dev';
 
-const RESIDENTS = [1, 2, 3];           // 利用者
+// 利用者ID一覧（環境変数 RESIDENTS="1,2,3" で上書き可。デフォルトは50名想定: id 1-3 + 8-54）
+const RESIDENTS = process.env.RESIDENTS
+  ? process.env.RESIDENTS.split(',').map(Number)
+  : [1, 2, 3, ...Array.from({ length: 47 }, (_, i) => 8 + i)];
 const BEACONS = ['BCN-101', 'BCN-102', 'BCN-103', 'BCN-TOILET', 'BCN-DINING', 'BCN-COMMON'];
 
 const stats = {
