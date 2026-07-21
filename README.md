@@ -112,6 +112,21 @@ docker exec -i nursecall-db psql -U nursecall -d nursecall < server/seeds/seed_b
 > 既にDBボリュームがある場合（アップデート時）は追加マイグレーションを手動適用:
 > `docker exec -i nursecall-db psql -U nursecall -d nursecall < server/migrations/002_location_and_alerts.sql`
 
+## 外部公開URL（Cloudflare Tunnel）
+
+ルーター設定・ポート開放不要で、施設外（デモ相手・外出中の職員）からアクセスできる公開URLを発行できます。
+
+```powershell
+# デモ用（アカウント不要、1分で公開。URLは毎回変わる）
+scripts\start-demo-tunnel.bat   # ← ダブルクリックでOK。表示されたURLをデモ相手に送る
+scripts\stop-demo-tunnel.bat    # デモ終了後は必ず停止
+```
+
+本運用向けの固定URL（独自ドメイン）の手順は **[docs/CLOUDFLARE_TUNNEL_SETUP.md](docs/CLOUDFLARE_TUNNEL_SETUP.md)** を参照。
+
+> ⚠️ ログイン認証は未実装のため、URLを知っている人は誰でもアクセス可能です。
+> デモ用途に限定し、外部職員の本運用前には認証実装（ロードマップ①）とTURN導入（同④）が必要です。
+
 ## 使い方（デモシナリオ）
 
 1. **3画面を並べて開く**（利用者・職員・管理）
@@ -132,4 +147,5 @@ docker exec -i nursecall-db psql -U nursecall -d nursecall < server/seeds/seed_b
 
 - **プラットフォーム**: Docker Compose（施設内オンプレ / ノートPC・MiniPC）
 - **技術スタック**: Node.js 20 + Express + Socket.IO + PostgreSQL 16 + Asterisk + Nginx + TailwindCSS(CDN) + WebRTC
-- **最終更新**: 2026-07-20
+- **外部公開**: Cloudflare Tunnel（docker-compose.tunnel.yml / scripts/start-demo-tunnel.*）
+- **最終更新**: 2026-07-21

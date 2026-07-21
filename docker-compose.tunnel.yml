@@ -1,0 +1,44 @@
+# ============================================================
+# Cloudflare Tunnel オーバーレイ設定
+#
+# 使い方（施設PCで実行）:
+#
+#  【A. デモ用クイックトンネル】 アカウント不要・URLは毎回変わる
+#    docker compose -f docker-compose.yml -f docker-compose.tunnel.yml \
+#      --profile quick up -d
+#    URL確認: docker logs nursecall-tunnel-quick 2>&1 | grep trycloudflare
+#
+#  【B. 恒久トンネル】 Cloudflareアカウント + 独自ドメインで固定URL
+#    1. .env に TUNNEL_TOKEN=eyJhI... を記載（取得方法はdocs/CLOUDFLARE_TUNNEL_SETUP.md）
+#    2. docker compose -f docker-compose.yml -f docker-compose.tunnel.yml \
+#         --profile named up -d
+# ============================================================
+
+services:
+  # --- A. デモ用クイックトンネル（*.trycloudflare.com の一時URL） ---
+  tunnel-quick:
+    image: cloudflare/cloudflared:latest
+    container_name: nursecall-tunnel-quick
+    restart: unless-stopped
+    command: tunnel --no-autoupdate --url http://nginx:80
+    depends_on:
+      - nginx
+    networks:
+      - nursecall-net
+    profiles:
+      - quick
+
+  # --- B. 恒久トンネル（固定URL・要 Cloudflare アカウント） ---
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: nursecall-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN が .env に設定されていません（docs/CLOUDFLARE_TUNNEL_SETUP.md 参照）}
+    depends_on:
+      - nginx
+    networks:
+      - nursecall-net
+    profiles:
+      - named
