@@ -292,11 +292,9 @@ async function fcmInit() {
     if (!res.enabled) return; // Firebase未設定→セクション非表示のまま
     if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
 
-    // Firebase SDKを動的ロード（未設定環境での無駄な読み込みを回避）
-    await Promise.all([
-      loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js'),
-      loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js'),
-    ]);
+    // Firebase SDKを動的ロード（順次: messagingはappに依存するため並列不可）
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js');
+    await loadScript('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
     fcm.app = firebase.initializeApp(res.config);
     fcm.messaging = firebase.messaging();
     fcm.vapidKey = res.vapidKey;
