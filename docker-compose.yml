@@ -66,6 +66,7 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://nursecall:nursecall_dev_2024@postgres:5432/nursecall
       ASTERISK_HOST: asterisk
+      ASTERISK_WS_PORT: 8088          # SIP over WebSocket（/sip-ws プロキシの上流）
       ASTERISK_ARI_PORT: 8088
       ASTERISK_ARI_USER: nursecall
       ASTERISK_ARI_PASSWORD: nursecall_ari_2024

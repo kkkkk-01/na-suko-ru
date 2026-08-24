@@ -143,6 +143,18 @@ class NotificationService {
     );
     const caller = callerResult.rows[0];
 
+    // 発信者の実機(ESP32/M5StickS3)のSIP内線を解決
+    // → あれば職員画面は「SIP発信（Asterisk経由）」で通話する。
+    //   なければ従来のブラウザ間P2P(WebRTC)にフォールバック
+    let sipExtension = null;
+    const sipDev = await query(
+      `SELECT sip_username, is_online FROM devices
+       WHERE user_id = $1 AND device_type = 'esp32' AND sip_username IS NOT NULL
+       ORDER BY is_online DESC LIMIT 1`,
+      [callerId]
+    );
+    if (sipDev.rows.length > 0) sipExtension = sipDev.rows[0].sip_username;
+
     const title = 'ナースコール';
     // 革命ポイント: 「どこから呼んだか」が分かる
     const locationText = location?.name
@@ -177,6 +189,7 @@ class NotificationService {
         name: caller.name,
         room_number: caller.room_number,
         extension: caller.extension,
+        sip_extension: sipExtension,  // 実機のSIP内線（1001等。null=Webシミュレータ発）
       },
       location: location ? {
         beacon_id: location.beacon_id,

@@ -8,6 +8,8 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
 <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+<!-- JsSIP: ローカル同梱（施設LANがインターネット無しでも通話可能にするため） -->
+<script src="/staff/jssip.min.js"></script>
 <style>
   body { font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
   @keyframes flash { 0%,100%{background-color:#fef2f2} 50%{background-color:#fee2e2} }
@@ -92,6 +94,7 @@
       <h2 class="text-xl font-bold text-gray-800">通話中</h2>
       <p id="active-caller" class="text-lg text-gray-700 font-bold"></p>
       <p id="active-location" class="text-sm text-orange-600 font-semibold"></p>
+      <p id="active-route" class="text-xs text-gray-400"></p>
       <p id="call-timer" class="text-3xl font-mono text-gray-800 my-3">00:00</p>
       <button id="btn-end" class="w-full py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl font-bold text-lg"><i class="fas fa-phone-slash mr-1"></i>通話を終了</button>
     </div>
@@ -109,7 +112,7 @@ const CONFIG = (() => {
   return { API: base + '/api/v1', WS: base || undefined, KEY: 'nursecall_api_key_dev' };
 })();
 const $ = id => document.getElementById(id);
-const state = { staffId: 4, current: null, timer: null, seconds: 0, pc: null, localStream: null };
+const state = { staffId: 4, current: null, timer: null, seconds: 0, pc: null, localStream: null, sipUA: null, sipSession: null, sipReady: false };
 
 function toast(msg) { $('toast').textContent = msg; $('toast').classList.remove('hidden'); setTimeout(()=>$('toast').classList.add('hidden'),3000); }
 async function api(path, opts = {}) {
@@ -175,7 +178,16 @@ $('btn-answer').onclick = async () => {
     $('active-location').textContent = d.location ? `${d.location.name}付近` : `${d.caller.room_number||'-'}号室`;
     $('screen-active').classList.remove('hidden');
     startTimer();
-    startWebRTC(d);
+    // 音声経路選択:
+    //  - 発信者に実機内線(sip_extension)があり SIP 登録済 → Asterisk経由で実機と通話
+    //  - それ以外（Webシミュレータ発） → 従来のブラウザ間P2P WebRTC
+    if (d.caller.sip_extension && state.sipReady) {
+      $('active-route').textContent = `実機通話 (SIP内線 ${d.caller.sip_extension})`;
+      sipCall(d.caller.sip_extension);
+    } else {
+      $('active-route').textContent = d.caller.sip_extension ? 'SIP未接続のためP2Pで接続' : '';
+      startWebRTC(d);
+    }
   } catch (e) { toast('応答失敗: ' + e.message); state.current = null; $('screen-incoming').classList.add('hidden'); }
 };
 $('btn-reject').onclick = () => { $('screen-incoming').classList.add('hidden'); state.current = null; };
@@ -185,7 +197,7 @@ $('btn-end').onclick = async () => {
   endCallLocal();
 };
 function endCallLocal() {
-  closePeer(); clearInterval(state.timer);
+  closePeer(); sipHangup(); clearInterval(state.timer);
   $('call-timer').textContent = '00:00';
   $('screen-active').classList.add('hidden');
   $('screen-incoming').classList.add('hidden');
@@ -225,6 +237,50 @@ function closePeer() {
   if (state.pc) { state.pc.close(); state.pc = null; }
   if (state.localStream) { state.localStream.getTracks().forEach(t=>t.stop()); state.localStream = null; }
 }
+
+// ---- SIP通話（JsSIP）: M5StickS3等の実機との通話は Asterisk 経由 ----
+async function sipInit() {
+  try {
+    const res = await api(`/voice/config?user_id=${state.staffId}`);
+    if (!res.enabled) { console.log('SIP disabled:', res.reason); return; }
+    if (state.sipUA) { try { state.sipUA.stop(); } catch(e){} state.sipUA = null; state.sipReady = false; }
+
+    const wsScheme = location.protocol === 'https:' ? 'wss' : 'ws';
+    const socketUrl = `${wsScheme}://${location.host}${res.sip.ws_path}`;
+    const sipSocket = new JsSIP.WebSocketInterface(socketUrl);
+    state.sipUA = new JsSIP.UA({
+      sockets: [sipSocket],
+      uri: `sip:${res.sip.extension}@${res.sip.domain}`,
+      password: res.sip.password,
+      register: true,
+      register_expires: 120,
+      session_timers: false,
+    });
+    state.sipUA.on('registered', () => { state.sipReady = true; console.log('SIP registered:', res.sip.extension); });
+    state.sipUA.on('unregistered', () => { state.sipReady = false; });
+    state.sipUA.on('registrationFailed', (e) => { state.sipReady = false; console.warn('SIP registration failed:', e.cause); });
+    state.sipUA.start();
+  } catch (e) { console.warn('SIP init skipped:', e.message); }
+}
+
+function sipCall(extension) {
+  try {
+    const session = state.sipUA.call(`sip:${extension}@nursecall.local`, {
+      mediaConstraints: { audio: true, video: false },
+      rtcOfferConstraints: { offerToReceiveAudio: 1, offerToReceiveVideo: 0 },
+    });
+    state.sipSession = session;
+    session.connection.addEventListener('track', (e) => { $('remote-audio').srcObject = e.streams[0]; });
+    session.on('failed', (e) => { toast('SIP通話失敗: ' + e.cause + '（端末の電源/WiFiを確認）'); });
+    session.on('ended', () => { state.sipSession = null; });
+    session.on('confirmed', () => console.log('SIP call confirmed'));
+  } catch (e) { toast('SIP発信エラー: ' + e.message); }
+}
+
+function sipHangup() {
+  if (state.sipSession) { try { state.sipSession.terminate(); } catch(e){} state.sipSession = null; }
+}
+sipInit();
 
 // ---- アラート ----
 async function loadAlerts() {
@@ -362,6 +418,7 @@ $('staff-select').onchange = e => {
   state.staffId = parseInt(e.target.value); joinRoom();
   // 職員切替時はトークンを新しい職員に登録し直す
   if (fcm.token) api('/push/register', { method: 'POST', body: JSON.stringify({ user_id: state.staffId, token: fcm.token }) }).catch(()=>{});
+  sipInit(); // SIP内線も切替
 };
 loadAlerts();
 </script>

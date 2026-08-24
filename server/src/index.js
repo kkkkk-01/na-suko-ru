@@ -22,6 +22,7 @@ const beaconsRouter = require('./routes/beacons');
 const locationsRouter = require('./routes/locations');
 const alertsRouter = require('./routes/alerts');
 const pushRouter = require('./routes/push');
+const voiceRouter = require('./routes/voice');
 
 const app = express();
 const server = http.createServer(app);
@@ -34,6 +35,8 @@ const io = new SocketIOServer(server, {
   },
   pingTimeout: 60000,
   pingInterval: 25000,
+  // 重要: /sip-ws など Socket.IO 以外の WebSocket upgrade を壊さない
+  destroyUpgrade: false,
 });
 
 // 通知サービス初期化
@@ -87,6 +90,7 @@ app.use('/api/v1/beacons', beaconsRouter);
 app.use('/api/v1/locations', locationsRouter);
 app.use('/api/v1/alerts', alertsRouter);
 app.use('/api/v1/push', pushRouter);
+app.use('/api/v1/voice', voiceRouter);
 
 // ============================================================
 // 静的UI配信（単一サーバーで全画面を提供。Dockerではnginxが同等の役割）
@@ -216,6 +220,57 @@ io.on('connection', (socket) => {
     logger.info(`WebSocket disconnected: ${socket.id} (${reason})`);
   });
 });
+
+// ============================================================
+// SIP over WebSocket プロキシ: /sip-ws → Asterisk(8088)
+// 職員ブラウザ(JsSIP)は同一オリジンの wss://host/sip-ws に接続するだけで
+// SIPが使える（Cloudflare Tunnel/施設LANどちらでも追加ポート公開不要）。
+// Asterisk 未起動の場合は接続を即切断（グレースフル）。
+// ============================================================
+const WebSocket = require('ws');
+const ASTERISK_HOST = process.env.ASTERISK_HOST || 'localhost';
+const ASTERISK_WS_PORT = parseInt(process.env.ASTERISK_WS_PORT || '8088');
+
+// wsサーバー（noServer: upgradeは自前でルーティング）
+// perMessageDeflate無効: SIPテキストは小さく、Asterisk側も圧縮非対応のため
+const sipWss = new WebSocket.Server({ noServer: true, perMessageDeflate: false });
+
+server.on('upgrade', (req, socket, head) => {
+  if (!req.url.startsWith('/sip-ws')) return; // Socket.IO等は触らない
+
+  sipWss.handleUpgrade(req, socket, head, (clientWs) => {
+    // Asterisk側へ接続（サブプロトコル 'sip' 必須）
+    const upstream = new WebSocket(`ws://${ASTERISK_HOST}:${ASTERISK_WS_PORT}/ws`, 'sip', {
+      perMessageDeflate: false,
+    });
+
+    const pendingToUpstream = [];
+    upstream.on('open', () => {
+      for (const m of pendingToUpstream) upstream.send(m);
+      pendingToUpstream.length = 0;
+    });
+
+    clientWs.on('message', (data, isBinary) => {
+      const msg = isBinary ? data : data.toString();
+      if (upstream.readyState === WebSocket.OPEN) upstream.send(msg);
+      else if (upstream.readyState === WebSocket.CONNECTING) pendingToUpstream.push(msg);
+    });
+    upstream.on('message', (data, isBinary) => {
+      if (clientWs.readyState === WebSocket.OPEN) clientWs.send(isBinary ? data : data.toString());
+    });
+
+    const closeBoth = () => {
+      try { clientWs.close(); } catch (e) { /* noop */ }
+      try { upstream.close(); } catch (e) { /* noop */ }
+    };
+    clientWs.on('close', closeBoth);
+    upstream.on('close', closeBoth);
+    clientWs.on('error', closeBoth);
+    upstream.on('error', (e) => { logger.warn(`SIP-WS upstream error: ${e.message}`); closeBoth(); });
+  });
+});
+
+logger.info(`SIP-WS proxy ready: /sip-ws -> ${ASTERISK_HOST}:${ASTERISK_WS_PORT}/ws`);
 
 // ============================================================
 // オフライン監視ウォッチドッグ（60秒ごと）
