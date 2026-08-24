@@ -80,10 +80,46 @@ Body: {
 - ボタン押下は即座にLEDをオレンジ点滅にし、API成功でビープ1回
 - **API失敗時は3回リトライ後、赤LED点滅で利用者に「届いていない」ことを明示**（不達の可視化）
 
-### 4-3. 通話（Phase2以降）
-- 応答は `call:answered` を MQTT または WebSocket で受信
-- 音声: Asterisk (PJSIP/UDP) にSIP登録し、`sip_username`/`sip_password`（devicesテーブル）で認証
-- コーデック: G.711 (ulaw) → 帯域・CPUが許せばOpus
+### 4-3. 通話（Phase3・実装済みサーバー仕様）
+
+**通話フロー（確定）**:
+```
+1. 利用者がボタン押下 → 実機は REST /calls/request（音声はまだ無し）
+2. 職員スマホに着信表示（Socket.IO + FCMプッシュ）
+3. 職員が「応答」→ 職員ブラウザ(JsSIP)が実機のSIP内線へ発信
+4. 実機は SIP INVITE を【自動応答】→ 双方向通話開始
+```
+→ 音声呼は常に「職員→実機」方向。実機側に発信ロジックは不要（自動応答のみ）
+
+**SIP仕様（実機側の実装要件）**:
+- SIP登録: Asterisk へ UDP/5060 で REGISTER
+  - username = SIP内線番号（例: `1001`）= devicesテーブルのsip_username
+  - password = devicesテーブルのsip_password（例: `res1001_dev`）
+  - ドメイン: サーバーIP（プロビジョニングで設定）
+- 着信時: **自動応答**（200 OK即返答）。応答と同時にLED緑点灯+ビープ1回
+- コーデック: **G.711 ulaw (PCMU) 固定**（8kHz/64kbps。サーバー側も ulaw 統一でトランスコード無し）
+- RTP: サーバーのUDP 10000-10100
+- 切断: BYE受信でLED通常復帰。通話中にボタン長押し→BYE送信（利用者側からも切れる）
+- 推奨実装: ESP-IDF + esp_rtc (ESP-ADF VoIPコンポーネント) または baresip移植
+
+### 4-4. M5StickS3 オーディオハードウェア（実測ピン配置）
+
+M5StickS3 は ES8311 コーデック（I2C addr 0x18）+ MEMSマイク + AW8737アンプ + 1Wスピーカー内蔵。
+VoIP に必要な双方向音声が**外付け部品なし**で完結する。
+
+| 信号 | GPIO |
+|---|---|
+| ES8311 MCLK | 18 |
+| ES8311 BCLK | 17 |
+| ES8311 LRCK | 15 |
+| ES8311 DOUT → ESP32-S3 DIN（マイク入力） | 16 |
+| ES8311 I2C SCL | 48 |
+| ES8311 I2C SDA | 47 |
+| BtnA / KEY1（呼出ボタンに使用） | 11 |
+| BtnB / KEY2（通話終了/設定用） | 12 |
+
+- I2S: 16bit/8kHz モノラルで G.711 とダイレクトに整合
+- スピーカーアンプ(AW8737)の有効化は M5Unified / M5StickS3 BSP の実装を参照
 
 ## 5. 電源管理
 
